@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REEL vs REAL — Deepfake Video Detection</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Squada+One&display=swap" rel="stylesheet">
+
+<!-- tokens.css must load first: site.css consumes its custom properties.
+     tokens.css is duplicated verbatim into extension/css/ so both surfaces
+     share one palette and type scale. -->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/site.css">
+
+<!-- Motion layer. Both files are purely additive and load last so they can
+     override nothing but animation. Deleting these two lines returns the site
+     to its static look with no other side effects. -->
+<link rel="stylesheet" href="css/animate.css">
+<link rel="stylesheet" href="css/enhance.css">
+</head>
+<body>
+
+<header class="mast">
+  <div class="wrap mast-in">
+    <a href="#" class="mark">REEL<span>/</span>REAL</a>
+    <nav>
+      <a href="#detect">Check a video</a>
+      <a href="#method">Method</a>
+      <a href="#limits">Limits</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<!-- Hero Section with Squada One Bold Display Headline -->
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+
+      <div class="hero-text">
+        <span class="hero-tag">AI Forensics</span>
+        <h1 class="title">DEEPFAKE AI DETECTION <span>Your Truth Amplified</span></h1>
+        <p class="sub">Detect synthetic video and face manipulation. Clips are sampled frame by frame, and the report shows which moments were flagged.</p>
+      </div>
+
+      <div class="pair-wrapper">
+        <div class="pair">
+          <!-- Drop your own 9:16 clips at site/assets/reel.mp4 and
+               site/assets/real.mp4. Until then the green .ghost panel shows. -->
+          <figure class="slot" style="margin:0">
+            <div class="ghost"><b>reel.mp4</b>synthetic sample</div>
+            <video src="assets/reel.mp4" muted loop playsinline preload="metadata"></video>
+            <figcaption class="slot-tag"><span class="dot f"></span> REEL <em>generated</em></figcaption>
+          </figure>
+
+          <div class="vs-badge">VS</div>
+
+          <figure class="slot" style="margin:0">
+            <div class="ghost"><b>real.mp4</b>authentic sample</div>
+            <video src="assets/real.mp4" muted loop playsinline preload="metadata"></video>
+            <figcaption class="slot-tag"><span class="dot t"></span> REAL <em>original</em></figcaption>
+          </figure>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="statement">
+  <div class="wrap">
+    <p>A fake clip travels faster than a correction ever could. The critical question isn't just if a video is fake — but which moments look tampered with.</p>
+    <small class="serif">Our system flags the moments that look manipulated, and shows its working.</small>
+  </div>
+</section>
+
+<section class="upload" id="detect">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Check a video</h2>
+      <span>MP4 · MOV · WEBM — up to 200 MB</span>
+    </div>
+
+    <div class="drop" id="drop">
+      <h3>Drop a clip here, or choose from device</h3>
+      <p>Your video is sent to the analysis server and deleted as soon as the result is returned. You get a verdict and a timeline of which moments were flagged.</p>
+      <button class="btn" id="pick">Select Video File</button>
+      <!-- The real input is visually hidden and clicked programmatically so we
+           can style the trigger freely without losing keyboard accessibility. -->
+      <input type="file" id="file" accept="video/*" class="sr">
+
+      <div class="limits">
+        <span>✓ Face visible in most frames</span>
+        <span>✓ No re-encode needed</span>
+        <span>✓ Deleted after analysis</span>
+      </div>
+    </div>
+
+    <div class="staged glass-panel" id="staged">
+      <div class="staged-row">
+        <div>
+          <div class="name" id="sName">—</div>
+          <div class="meta" id="sMeta">—</div>
+        </div>
+        <div class="grow">
+          <button class="btn ghost" id="clear">Remove</button>
+          <button class="btn" id="run">Analyze Video</button>
+        </div>
+      </div>
+
+      <!-- Shown as soon as a file is chosen, so the clip can be checked before
+           committing to a 35-second analysis. Muted: an autoplaying preview that
+           makes noise is hostile. -->
+      <div class="staged-preview" id="sPreview">
+        <video id="sVideo" muted playsinline controls preload="metadata"></video>
+      </div>
+
+      <div class="bar" id="bar"><i></i></div>
+      <div class="bar-label" id="barLabel">Extracting frames…</div>
+    </div>
+  </div>
+</section>
+
+<section class="report" id="report">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Analysis Report</h2>
+      <span id="stamp">—</span>
+    </div>
+
+    <!-- Only shown when a result arrives from the Chrome extension. -->
+    <div class="handoff-note" id="handoffNote"></div>
+
+    <div class="glass-panel">
+      <div class="verdict">
+        <div class="file">
+          <h3 id="rName">—</h3>
+          <p id="rMeta">—</p>
+        </div>
+        <div class="badge" id="rBadge">Likely synthetic</div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><span>Synthetic score</span><strong id="rScore">0.00</strong></div>
+        <div class="stat"><span>Calibrated band</span><strong id="rBand">—</strong></div>
+        <div class="stat"><span>Flagged duration (est.)</span><strong id="rDur">—</strong></div>
+      </div>
+
+      <div class="viewer">
+        <div class="viewer-video">
+          <div class="ghost" id="vGhost">Preview window</div>
+          <video id="rVideo" controls playsinline></video>
+        </div>
+      </div>
+
+      <div class="timeline">
+        <h4>Timeline</h4>
+        <p class="hint">Built from frames sampled across the clip, not from every frame. Click any bar to jump to that moment.</p>
+        <div class="bars" id="bars"></div>
+        <div class="axis"><span>0:00</span><span id="axisMid">—</span><span id="axisEnd">0:24</span></div>
+        <div class="legend">
+          <span><i style="background:var(--true)"></i> Below threshold</span>
+          <span><i style="background:var(--warn)"></i> Near threshold</span>
+          <span><i style="background:var(--fake)"></i> Above threshold — flagged</span>
+        </div>
+      </div>
+
+      <div class="caveat">
+        <b>Reading the score:</b> This model is uncalibrated, so the score is a raw model output rather than a probability, and no confidence interval is shown. It has not yet been validated against known deepfakes. Treat the result as an indication to look closer, not as a finding. The timeline is more informative than the single number.
+      </div>
+    </div>
+
+    <div class="report-actions">
+      <button class="btn ghost" id="again">Check another video</button>
+    </div>
+  </div>
+</section>
+
+<!-- Section with Aesthetic Pink Background -->
+<div class="pink-theme-section">
+  <section class="method" id="method">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Services &amp; Methodology</h2>
+        <span class="serif">Multi-Signal Detection</span>
+      </div>
+      <div class="method-grid">
+        <div class="cell glass-panel">
+          <h3>Spatial Analysis</h3>
+          <p>Every sampled frame is searched for faces. Each face found is cropped and scored by a vision transformer trained to separate generated faces from real ones, giving one score per frame.</p>
+        </div>
+        <div class="cell glass-panel">
+          <h3>Temporal Consistency</h3>
+          <p>Frame scores are compared across the whole clip. A sustained run of consecutive flagged frames is treated differently from the same number scattered at random, which is more often noise.</p>
+        </div>
+        <div class="cell glass-panel">
+          <h3>Coverage Check</h3>
+          <p>Frames with no clear face are counted. If too few frames contain one, the system reports insufficient evidence instead of guessing from the handful it did find.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Section with Dark Forest Green Theme -->
+<div class="dark-theme-section">
+  <section class="method" id="limits">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Known Limits</h2>
+        <span class="serif">Full Transparency</span>
+      </div>
+      <div class="method-grid">
+        <div class="cell glass-panel">
+          <h3>Novel Generative Models</h3>
+          <p>Unseen architecture types may lower detection confidence. Unrecognized patterns are treated as unresolved rather than clean.</p>
+        </div>
+        <div class="cell glass-panel">
+          <h3>Heavy Re-compression</h3>
+          <p>Social platform re-uploads erase fine-grained camera noise, which makes a clip harder to judge. This is not currently detected, so a heavily re-compressed video is scored as if it were untouched.</p>
+        </div>
+        <div class="cell glass-panel">
+          <h3>Micro-Edits</h3>
+          <p>A short edit inside a long video can be averaged away by the clip score. Check the timeline bars rather than relying on the single number alone.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+</main>
+
+<footer>
+  <div class="wrap foot-in">
+    <span>REEL/REAL — Deepfake Detection System</span>
+    <span>Aesthetic Forensics Interface</span>
+  </div>
+</footer>
+
+<!-- detector.js defines window.ReelReal and must load before app.js. -->
+<script src="js/config.js"></script>
+<script src="js/detector.js"></script>
+<script src="js/app.js"></script>
+
+<!-- Motion layer, loaded after app.js so the elements it watches already
+     exist. Neither file reads or writes analysis state. -->
+<script src="js/reveal.js"></script>
+<script src="js/enhance.js"></script>
+</body>
+</html>

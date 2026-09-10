@@ -1,0 +1,24 @@
+# Merged dependencies for the deployed server: the connector's own, plus the
+# subset of the detection pipeline's that inference actually imports.
+#
+# torch and torchvision are installed separately in the Dockerfile from the CPU
+# index, and facenet-pytorch separately with --no-deps (its dependency block pins
+# an older torch and would silently downgrade the one installed above).
+#
+# Deliberately NOT included, both from ctf_pretrained/requirements.txt:
+#   gradio  - only used by the standalone ctf_pretrained/app.py demo, which this
+#             server does not run. It also pins its own FastAPI and would
+#             downgrade the one below.
+#   pandas  - only used by the training and evaluation scripts.
+
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+transformers==4.44.2
+
+opencv-python-headless==4.10.0.84
+scikit-learn==1.5.2
+matplotlib==3.9.2
+numpy>=1.26,<3
+Pillow>=10.0
+tqdm==4.66.5
