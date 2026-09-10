@@ -70,27 +70,22 @@ class VideoAnalyzer:
     # ------------------------------------------------------------------
     @torch.no_grad()
     def _score(self, crop_images) -> np.ndarray:
-        """Scores face crops using the Hugging Face Vision Transformer.
-        Applies a calibration bias offset to neutralize compression artifacts on real faces.
-        """
+        """Per-crop P(deepfake) from the Hugging Face Vision Transformer."""
         scores = []
         for im in crop_images:
             if isinstance(im, np.ndarray):
                 im_pil = Image.fromarray(im)
             else:
                 im_pil = im
-                
+
             inputs = self.processor(images=im_pil, return_tensors="pt").to(self.device)
             outputs = self.model(**inputs)
             logits = outputs.logits.float() / max(self.temperature, 1e-6)
-            
-            # Class 0 is Deepfake, grab index 0 probability
+
+            # The checkpoint declares id2label {0: 'Realism', 1: 'Deepfake'}, so
+            # P(fake) is index 1. Reading index 0 here inverted every verdict.
             probs = torch.softmax(logits, dim=1)[0]
-            fake_prob = probs[0].item()
-            
-            # Apply offset to prevent over-sensitivity on real videos
-            calibrated_fake_prob = max(0.0, fake_prob - 0.25)
-            scores.append(calibrated_fake_prob)
+            scores.append(probs[1].item())
         return np.array(scores)
 
     def _explain(self, crop) -> Optional[Dict]:

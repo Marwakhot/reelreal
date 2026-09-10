@@ -58,14 +58,12 @@ visitor is not the one waiting.
 
 ## Known state of the detector
 
-Two open issues, both in `ctf_pretrained/`, neither introduced by the deployment:
+`_score()` in `infer_pipeline.py` returns P(deepfake) from class index 1, which is
+what the checkpoint's `id2label {0: 'Realism', 1: 'Deepfake'}` declares. An
+earlier version read index 0 and subtracted a flat 0.25 from every frame score;
+between them, no frame could ever cross the 0.90 flag threshold and every video
+came back "NO MANIPULATION DETECTED". Both edits are reverted. See `STATUS.md`.
 
-1. **Verdicts are inverted.** `infer_pipeline._score()` reads class index 0 as
-   "fake", but the checkpoint reports `id2label {0: 'Realism', 1: 'Deepfake'}` —
-   index 0 is *real*. Every verdict comes out as its own opposite.
-2. **The clip score is the single highest frame** when no calibrator is fitted, so
-   one bad frame decides a whole video, and longer videos are steadily more likely
-   to be called fake.
-
-Fixes for both, with evidence, are in `REELREAL-COMPLETE-FIXED.zip` alongside this
-project. Whichever `ctf_pretrained/` is uploaded here is what visitors get.
+One issue remains open: **clip calibration has never been fitted.** The number
+shown is a flagged-frame fraction, not a probability, and the report says
+`Uncalibrated` rather than inventing a confidence band. Read it as a ranking.

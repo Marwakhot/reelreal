@@ -67,7 +67,8 @@ def feature_vector(probs: Sequence[float], high_thresh: float = None) -> np.ndar
     return np.array([f[k] for k in FEATURE_NAMES], dtype=np.float64)
 
 
-def apply_clip_calibrator(probs: Sequence[float], calib: Optional[dict]) -> tuple:
+def apply_clip_calibrator(probs: Sequence[float], calib: Optional[dict],
+                          high_thresh: float = None) -> tuple:
     """(clip_probability, is_calibrated).
 
     FIX (was max-of-frames): the fallback used when no calibrator has been
@@ -85,7 +86,12 @@ def apply_clip_calibrator(probs: Sequence[float], calib: Optional[dict]) -> tupl
     same proportion of flagged frames score the same.
     """
     if not calib:
-        f = clip_features(probs, config.DEFAULT_HIGH_THRESH)
+        # The caller's threshold, not the config default: the verdict rule and
+        # the evidence rows count flagged frames at the analyzer's high_thresh,
+        # so computing the shown score at a different one made the report
+        # contradict itself ("confidence 0.40" beside "0 frames flagged").
+        ht = config.DEFAULT_HIGH_THRESH if high_thresh is None else float(high_thresh)
+        f = clip_features(probs, ht)
         # Flagged-frame fraction: bounded regardless of frame count, and
         # matches what evidence.py already tells the user is being shown.
         fallback_prob = float(f["frac_flagged"]) if f["n_frames"] > 0 else 0.0
@@ -137,7 +143,7 @@ def decide(probs: Sequence[float], coverage: float, calib: Optional[dict] = None
     else:
         high_thresh = float(high_thresh)
     feats = clip_features(probs, high_thresh)
-    clip_prob, is_cal = apply_clip_calibrator(probs, calib)
+    clip_prob, is_cal = apply_clip_calibrator(probs, calib, high_thresh)
 
     if coverage < min_coverage or feats["n_frames"] == 0:
         verdict = "INSUFFICIENT EVIDENCE"

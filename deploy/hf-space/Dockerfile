@@ -47,6 +47,12 @@ RUN python -c "from transformers import ViTForImageClassification, ViTImageProce
 m='prithivMLmods/Deep-Fake-Detector-v2-Model'; \
 ViTForImageClassification.from_pretrained(m); ViTImageProcessor.from_pretrained(m)"
 
+# facenet-pytorch went in with --no-deps, so pip checked none of its imports.
+# Build the face detector once here: a missing dependency then fails the build
+# rather than the first upload, minutes into a live demo.
+RUN python -c "import cv2; from facenet_pytorch import MTCNN; \
+MTCNN(keep_all=True, post_process=False, device='cpu')"
+
 # Spaces route external traffic to 7860.
 EXPOSE 7860
 WORKDIR /home/user/app/server

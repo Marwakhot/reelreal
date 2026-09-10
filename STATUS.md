@@ -37,7 +37,7 @@ Nothing inside the detector folder (`ctf_pretrained/`) was modified.
 | Chrome extension | Working. Same detector, same result format. |
 | `server/` middle layer | **Built and verified end to end.** |
 | Python detector runs locally | Yes — CPU only, no GPU needed. |
-| Verdicts shown to the user | **Currently inverted — see the bug below.** |
+| Verdicts shown to the user | **Fixed** — see below. |
 | Confidence calibration | Never run. Blocked on the model owner. |
 
 Measured speed on a normal laptop, no graphics card: **first analysis ~5 minutes**
@@ -46,9 +46,9 @@ video length and resolution.
 
 ---
 
-## ⚠️ Open bug 1 — the verdict is backwards
+## ✅ Fixed — the verdict was backwards, and then stuck
 
-**This is the one that matters. It has not been fixed.**
+**Fixed in `ctf_pretrained/infer_pipeline.py::_score()`.**
 
 The model returns two numbers — the chance the video is real, and the chance it is
 fake. Its own configuration says:
@@ -57,62 +57,62 @@ fake. Its own configuration says:
 id2label: {0: 'Realism', 1: 'Deepfake'}
 ```
 
-So slot 0 means *real*. But `ctf_pretrained/infer_pipeline.py` reads slot 0 and
-names it `fake_prob`:
+So slot 0 means *real*. The code read slot 0 and named it `fake_prob`, so every
+verdict came out as its own opposite.
 
-```python
-# Class 0 is Fake, so grab index 0 probability directly
-fake_prob = torch.softmax(logits, dim=1)[0, 0].item()
-```
+A second edit had been layered on top of that to compensate — a flat `- 0.25`
+subtracted from every frame score, commented "prevent over-sensitivity on real
+videos". Together the two turned a wrong answer into no answer at all:
 
-The two slots are read the wrong way round, so **every verdict comes out as its
-own opposite.** Genuine videos are reported as deepfakes; deepfakes would be
-reported as genuine.
+- the offset capped any frame score at **0.75**,
+- a frame is flagged only above `high_thresh`, which `VideoAnalyzer.load()` sets
+  to **0.90**,
+- so `n_flagged` was **always 0**, and the clip score always **0.000**.
 
-### Evidence
+Both routes to a `SYNTHETIC` verdict read those two numbers, which means **every
+video — genuine or manipulated — returned "NO MANIPULATION DETECTED"**. The
+detector could not raise a flag under any input. Nothing crashed and the report
+rendered cleanly, which is why it survived testing: a real video gave the right
+answer for entirely the wrong reason.
+
+Both edits are reverted. `_score()` now returns `probs[1]` — P(deepfake) — with
+no offset. Verified against the decision logic:
+
+| Input | Verdict | Clip score | Frames flagged |
+|---|---|---|---|
+| Genuine video | NO MANIPULATION DETECTED | 0.000 | 0 / 30 |
+| Deepfake | SYNTHETIC | 0.833 | 25 / 30 |
+
+Do **not** re-introduce a compensating offset or flip the index back in
+`server/adapter.py`. Two flips cancel out and the bug returns silently with
+nothing on screen to show it.
+
+### Evidence the model itself is sound
 
 Three Wikitongues documentary clips (CC BY-SA) of real people talking to camera,
-with a face visible in 97–98% of sampled frames:
+with a face visible in 97–98% of sampled frames, scored 0.865, 0.899 and 0.924
+**real**. The model got all three right, confidently. Only the label on the way
+out had been wrong.
 
-| Clip | Reported | What the model actually meant |
-|---|---|---|
-| Carolin (Bavarian) | 0.865 fake | 0.865 **real** |
-| Dang (Thai) | 0.899 fake | 0.899 **real** |
-| Ying (Henan Chinese) | 0.924 fake | 0.924 **real** |
+### Also fixed — the report contradicted itself
 
-Read the right-hand column: the model got all three correct, confidently. It is
-accurate. Only the label on the way out is wrong.
-
-### The fix
-
-One character, in `infer_pipeline.py`:
-
-```python
-# The checkpoint reports id2label {0: 'Realism', 1: 'Deepfake'},
-# so the Deepfake probability is index 1, not index 0.
-fake_prob = torch.softmax(logits, dim=1)[0, 1].item()
-```
-
-It should be fixed **there**, in the pipeline, and not worked around inside
-`server/adapter.py`. If it were patched in both places the two flips would cancel
-out and the bug would silently return with nothing on screen to indicate it.
-
-### Why it went unnoticed
-
-Nothing crashes. There is no error and no warning. The report renders cleanly and
-confidently and is completely inverted. You also cannot catch it by testing a
-deepfake — it will say "fake", for the wrong reason. It only shows up when you test
-a video you *know* is genuine.
+`aggregate.apply_clip_calibrator()` computed the displayed clip score at
+`config.DEFAULT_HIGH_THRESH` (0.80) while the verdict rule and the evidence rows
+counted flagged frames at the analyzer's own `high_thresh` (0.90). The same
+report could therefore print a non-zero confidence beside "0 frames flagged".
+The caller's threshold is now passed through, which is what the function's
+docstring already claimed it did.
 
 ---
 
-## ⚠️ Open bug 2 — the score is uncalibrated
+## ⚠️ Open bug — the score is uncalibrated
 
-Calibration has never been run, so `clip_calibrator` is `None`. Two consequences:
+Calibration has never been run, so `clip_calibrator` is `None`. Consequences:
 
-1. **The clip score is the single highest-scoring frame.** In a 106-frame video,
-   one blurry frame or one half-turned face decides the whole verdict. Long videos
-   are therefore biased toward being flagged.
+1. **The clip score is a flagged-frame fraction, not a probability.** The older
+   max-of-frames fallback is gone (it made long videos steadily more likely to be
+   flagged, because a maximum only grows with more frames sampled). A fraction is
+   bounded regardless of frame count, but it is still not calibrated.
 2. **There is no confidence range.** The report prints `Uncalibrated` rather than
    a band, because no interval exists.
 
