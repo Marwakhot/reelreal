@@ -11,7 +11,7 @@
  * elsewhere (Azure Container Apps), so the fallback below cannot find it and
  * every upload would 404.
  */
-// window.REELREAL_API_BASE = 'https://reelreal.<id>.<region>.azurecontainerapps.io';
+window.REELREAL_API_BASE = 'https://reelreal.salmonbeach-c14fa31b.switzerlandnorth.azurecontainerapps.io';
 
 /* Fallback for when the site and the detector are served by the same container:
    the API is then simply wherever this page came from. Opened from localhost or
