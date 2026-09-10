@@ -51,12 +51,20 @@ class VideoAnalyzer:
         
         processor = ViTImageProcessor.from_pretrained(model_id)
         
-        # Balanced threshold configuration to prevent false positives on real videos
+        # PROVISIONAL thresholds, fitted by sweep on 12 Celeb-DF-v2 clips (6
+        # synthesis, 6 real) and therefore in-sample: 10 of the 12 land on the
+        # right side of 0.40. Do not quote that as validation accuracy. They
+        # replace 0.7/0.9, which were hand-picked while _score() was returning
+        # P(real) - 0.25 and which no frame could reach once that was fixed.
+        #
+        # decision_thresh applies to the clip mean; high_thresh only marks
+        # individual frames for the evidence panel and timeline colouring, and
+        # no longer decides the verdict.
         dummy_ckpt = {
             "arch": "vit",
             "temperature": 1.0,
-            "decision_thresh": 0.7,
-            "high_thresh": 0.9,
+            "decision_thresh": 0.40,
+            "high_thresh": 0.60,
             "clip_calibrator": None
         }
         

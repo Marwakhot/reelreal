@@ -105,18 +105,56 @@ docstring already claimed it did.
 
 ---
 
-## ⚠️ Open bug — the score is uncalibrated
+## Thresholds — measured, and weaker than they look
+
+The decision thresholds were swept on **12 Celeb-DF-v2 clips** (6 Celeb-synthesis,
+6 Celeb-real) scored by this checkpoint. Ranking clips by each candidate statistic:
+
+| Clip statistic | AUC |
+|---|---|
+| **Mean per-frame probability** | **0.833** |
+| Flagged-frame fraction (best per-frame threshold, 0.60) | 0.806 |
+| Maximum per-frame probability | **0.500** |
+
+The maximum carries no signal whatsoever. That matters, because two earlier
+designs were driven by it — first the max as the clip score, then a 0.90
+per-frame threshold plus an `n_flagged >= 2` verdict shortcut. Both were reading
+the one statistic that does not separate.
+
+So the clip score is now the **mean**, with `decision_thresh = 0.40` and
+`high_thresh = 0.60`. `high_thresh` now only marks frames for the evidence panel
+and the timeline; it no longer decides anything.
+
+**Read the accuracy honestly.** 10 of those 12 clips land on the correct side of
+0.40, but the threshold was chosen *on those same 12 clips*. That is an in-sample
+fit, not a validation score, and 12 clips is a very small sample. Do not quote it
+as an accuracy figure.
+
+Two failures are worth naming:
+
+- `id0_id20_0001` — a deepfake with mean 0.38, just under the line. Missed.
+- `id3_0007` — a **genuine** video with mean 0.63, scoring higher than five of the
+  six deepfakes. No threshold fixes this one; the model is confidently wrong about
+  it. Expect false positives on real footage of this kind.
+
+## ⚠️ Still open — the score is uncalibrated
 
 Calibration has never been run, so `clip_calibrator` is `None`. Consequences:
 
-1. **The clip score is a flagged-frame fraction, not a probability.** The older
-   max-of-frames fallback is gone (it made long videos steadily more likely to be
-   flagged, because a maximum only grows with more frames sampled). A fraction is
-   bounded regardless of frame count, but it is still not calibrated.
+1. **The clip score is a mean model output, not a probability.** A clip scoring
+   0.55 is not "55% likely to be fake"; it is only ranked above one scoring 0.30.
 2. **There is no confidence range.** The report prints `Uncalibrated` rather than
    a band, because no interval exists.
+3. **The mean dilutes partial manipulation.** A lip-sync edit that leaves most
+   frames untouched will score low. The clips measured above are whole-face swaps,
+   where every frame is manipulated.
 
-Until this is done, treat the number as a *ranking*, not a probability.
+Fitting the calibrator (`fit_clip_calibration.py`) addresses all three: it takes
+all six clip features and learns their weights from labelled clips, rather than
+anyone hand-picking a summary statistic and a cut-off. It needs the FF++ /
+Celeb-DF splits and Colab — which is what Colab is actually for here.
+
+Until then, treat the number as a *ranking*, not a probability.
 
 Fixing it needs, on the model side: a trained checkpoint (`model_best.pt`), then
 `fit_clip_calibration.py --splits splits.json`, then loading that checkpoint in

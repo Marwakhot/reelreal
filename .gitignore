@@ -14,6 +14,16 @@ __pycache__/
 site/assets/*.mp4
 site/assets/*.webm
 
+# Test footage. Celeb-DF and FaceForensics++ are licensed for research use and
+# must NOT be redistributed - committing a clip here would breach the agreement
+# signed to obtain the dataset, quite apart from the repository size.
+*.mp4
+*.mov
+*.webm
+*.mkv
+*.avi
+*.m4v
+
 # Local scratch
 *.log
 .claude/settings.local.json

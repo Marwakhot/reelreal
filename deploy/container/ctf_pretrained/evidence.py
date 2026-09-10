@@ -79,7 +79,7 @@ def calibration_caveat(is_calibrated: bool) -> Optional[str]:
     if is_calibrated:
         return None
     return ("This score is NOT calibrated: no clip-level calibration has been "
-            "fitted, so the number shown is a raw flagged-frame fraction and "
+            "fitted, so the number shown is the mean per-frame model output and "
             "should not be read as a probability.")
 
 

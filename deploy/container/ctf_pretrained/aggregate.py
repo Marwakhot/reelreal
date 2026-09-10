@@ -67,35 +67,33 @@ def feature_vector(probs: Sequence[float], high_thresh: float = None) -> np.ndar
     return np.array([f[k] for k in FEATURE_NAMES], dtype=np.float64)
 
 
-def apply_clip_calibrator(probs: Sequence[float], calib: Optional[dict],
-                          high_thresh: float = None) -> tuple:
+def apply_clip_calibrator(probs: Sequence[float], calib: Optional[dict]) -> tuple:
     """(clip_probability, is_calibrated).
 
-    FIX (was max-of-frames): the fallback used when no calibrator has been
-    fitted used to return the single highest-scoring frame as the "clip
-    probability". A maximum is monotonically non-decreasing in the number of
-    frames sampled -- every extra frame is one more chance to draw a single
-    noisy outlier, so longer clips (or clips sampled at more frames) drifted
-    toward SYNTHETIC regardless of content. It also silently contradicted
-    evidence.calibration_caveat(), which already told the user the shown
-    number is "a raw flagged-frame fraction" -- it never actually was one.
+    The uncalibrated fallback is the MEAN per-frame probability. This was
+    measured, not assumed: on 12 Celeb-DF-v2 clips (6 Celeb-synthesis, 6
+    Celeb-real) scored by this checkpoint, ranking clips by
 
-    The fallback now IS that fraction: n_flagged / n_frames at the pipeline's
-    own high_thresh. A fraction is bounded in [0, 1] independent of how many
-    frames were sampled, so a 30-frame clip and a 120-frame clip with the
-    same proportion of flagged frames score the same.
+        mean            AUC 0.833
+        flagged-frac    AUC 0.806  (at its best per-frame threshold, 0.60)
+        max             AUC 0.500
+
+    The maximum carries no signal at all here, which matters because two
+    earlier designs were driven by it -- first the max itself as the clip
+    score, then a high per-frame threshold with a "2 flagged frames" verdict
+    shortcut. Both were reading the one statistic that does not separate.
+
+    The mean's known weakness is real and unaddressed: it dilutes a partial
+    manipulation, so a lip-sync edit that leaves most frames untouched will
+    score low. The clips measured above are whole-face swaps, where every
+    frame is manipulated. If partial manipulations become a target, fit the
+    clip calibrator (fit_clip_calibration.py) rather than hand-picking a
+    different summary statistic -- the calibrator takes all six features and
+    learns their weights from labelled clips.
     """
     if not calib:
-        # The caller's threshold, not the config default: the verdict rule and
-        # the evidence rows count flagged frames at the analyzer's high_thresh,
-        # so computing the shown score at a different one made the report
-        # contradict itself ("confidence 0.40" beside "0 frames flagged").
-        ht = config.DEFAULT_HIGH_THRESH if high_thresh is None else float(high_thresh)
-        f = clip_features(probs, ht)
-        # Flagged-frame fraction: bounded regardless of frame count, and
-        # matches what evidence.py already tells the user is being shown.
-        fallback_prob = float(f["frac_flagged"]) if f["n_frames"] > 0 else 0.0
-        return fallback_prob, False
+        p = np.asarray(list(probs), dtype=np.float64)
+        return (float(p.mean()) if p.size else 0.0), False
 
     ht = float(calib.get("high_thresh", config.DEFAULT_HIGH_THRESH))
     names = calib.get("feature_names", FEATURE_NAMES)
@@ -143,11 +141,15 @@ def decide(probs: Sequence[float], coverage: float, calib: Optional[dict] = None
     else:
         high_thresh = float(high_thresh)
     feats = clip_features(probs, high_thresh)
-    clip_prob, is_cal = apply_clip_calibrator(probs, calib, high_thresh)
+    clip_prob, is_cal = apply_clip_calibrator(probs, calib)
 
     if coverage < min_coverage or feats["n_frames"] == 0:
         verdict = "INSUFFICIENT EVIDENCE"
-    elif clip_prob >= decision_thresh or (not is_cal and feats["n_flagged"] >= 2):
+    # One rule, on the clip probability. An earlier "or n_flagged >= 2" shortcut
+    # was removed: a fixed count does not scale with clip length, and on the
+    # measured clips it fired on real videos -- id4_0001 has nine frames above
+    # 0.60 while its mean, 0.37, is correctly below the decision threshold.
+    elif clip_prob >= decision_thresh:
         verdict = "SYNTHETIC"
     else:
         # Not "REAL": a face-only detector cannot certify a video as authentic.
