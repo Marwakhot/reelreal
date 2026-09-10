@@ -165,9 +165,73 @@ Then open <http://127.0.0.1:8080/site/index.html>.
 The `server/.venv` folder is **not** included in this archive — it is about 1.3 GB
 of installable libraries. Recreate it with the instructions in `server/README.md`.
 
+---
+
+## Deploying it
+
+Two pieces, two hosts. The site is static and goes on **Vercel**; the detector
+needs Python, PyTorch and about 1 GB of memory, so it goes in a container on
+**Azure Container Apps**.
+
+Why not the obvious free options: Hugging Face moved Docker Spaces behind a PRO
+subscription during 2026 and only Static Spaces remain free, which cannot run
+Python. Fly.io dropped its free tier. Render and Koyeb cap free instances at
+512 MB, and this needs roughly double that. Colab is not an option at any price —
+its terms prohibit "web service offering not related to interactive compute" on
+paid plans as well as free, and tunnelling out of it risks the Google account.
+
+Azure Container Apps has a perpetual free monthly grant — 180,000 vCPU-seconds,
+360,000 GiB-seconds, 2 million requests — which a demo fits inside.
+
+### Backend
+
+```bash
+az login
+az group create --name reelreal-rg --location eastus
+az containerapp up \
+  --name reelreal --resource-group reelreal-rg \
+  --source deploy/container \
+  --ingress external --target-port 7860 \
+  --cpu 1.0 --memory 2.0Gi
+```
+
+`--source` builds the image in the cloud, so Docker is not needed locally. The
+first build takes 15–25 minutes: it installs CPU-only PyTorch and bakes the
+340 MB model into the image.
+
+Then set the CORS origin, which otherwise defaults to `*`:
+
+```bash
+az containerapp update --name reelreal --resource-group reelreal-rg \
+  --set-env-vars ALLOWED_ORIGINS=https://<your-site>.vercel.app
+```
+
+### Frontend
+
+Set the backend address in `site/js/config.js` — the one line that needs editing
+when the backend moves — then deploy `site/` to Vercel with **Root Directory:
+`site`** and no build command.
+
+### Cold starts
+
+The image is ~3 GB, so a container starting from cold takes a minute or two.
+Scaled to zero, that lands on the first visitor. Keep one replica warm while the
+project is being demonstrated, and scale back to zero afterwards:
+
+```bash
+# before a demo
+az containerapp update --name reelreal --resource-group reelreal-rg --min-replicas 1
+# after
+az containerapp update --name reelreal --resource-group reelreal-rg --min-replicas 0
+```
+
+A warm idle replica bills at Container Apps' idle rate, a few dollars a month.
+At zero replicas it costs nothing at all.
+
 ## Before this is shown to anyone outside the team
 
-- `allow_origins=["*"]` in `app.py` → replace with the real site origin.
+- CORS defaults to `*` when `ALLOWED_ORIGINS` is unset, which lets any website on
+  the internet submit videos to the server. Set it to the real site origin.
 - `host_permissions` in `extension/manifest.json` → replace the localhost entries
   with the deployed `https://` origin. Do not use `https://*/*`; Chrome will warn
   users that the extension can read data on every site.

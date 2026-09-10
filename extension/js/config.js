@@ -5,6 +5,8 @@
  * so this file must load BEFORE detector.js.
  *
  * Local development: leave this commented out.
- * Deployed: uncomment and paste the Hugging Face Space URL, no trailing slash.
+ * Deployed: uncomment and paste the backend's address, no trailing slash. The
+ * extension has no same-origin fallback — a popup is always a different origin —
+ * so this must be set for any build that is not talking to localhost.
  */
-// window.REELREAL_API_BASE = 'https://YOUR-USERNAME-reelreal.hf.space';
+// window.REELREAL_API_BASE = 'https://reelreal.<id>.<region>.azurecontainerapps.io';

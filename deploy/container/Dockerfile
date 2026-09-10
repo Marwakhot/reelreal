@@ -1,4 +1,5 @@
-# Hugging Face Space, Docker SDK.
+# Container image for the REEL/REAL detection API. Built for Azure Container
+# Apps; runs unmodified on Cloud Run, Container Instances and most other hosts.
 #
 # Python 3.11 because tokenizers 0.19.1 (pulled in by transformers 4.44.2) ships
 # no wheels above 3.12, and scikit-learn 1.5.2 / matplotlib 3.9.2 stop at 3.13.
@@ -11,9 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Spaces run the container as uid 1000. Everything the process writes to must be
-# owned by that user, including the Hugging Face cache the model downloads into —
-# the default cache path is not writable here and the download would fail.
+# Run as a non-root user. Everything the process writes to must be owned by that
+# user, including the Hugging Face cache the model downloads into — the default
+# cache path is root-owned and the download would fail.
 RUN useradd -m -u 1000 user
 USER user
 ENV HOME=/home/user \
@@ -41,8 +42,8 @@ COPY --chown=user site/           ./site/
 ENV PIPELINE_DIR=/home/user/app/ctf_pretrained
 
 # Bake the model into the image at build time. Without this the first visitor
-# waits out a ~340 MB download on top of the analysis itself, and on a Space that
-# has just woken from sleep that reads as a hang.
+# waits out a ~340 MB download on top of the analysis itself, and on a container
+# that has just started from cold that reads as a hang.
 RUN python -c "from transformers import ViTForImageClassification, ViTImageProcessor; \
 m='prithivMLmods/Deep-Fake-Detector-v2-Model'; \
 ViTForImageClassification.from_pretrained(m); ViTImageProcessor.from_pretrained(m)"
@@ -53,7 +54,7 @@ ViTForImageClassification.from_pretrained(m); ViTImageProcessor.from_pretrained(
 RUN python -c "import cv2; from facenet_pytorch import MTCNN; \
 MTCNN(keep_all=True, post_process=False, device='cpu')"
 
-# Spaces route external traffic to 7860.
+# Ingress targets 7860. Container Apps is configured with --target-port 7860.
 EXPOSE 7860
 WORKDIR /home/user/app/server
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
