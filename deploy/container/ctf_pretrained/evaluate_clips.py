@@ -139,16 +139,37 @@ def score_clips(jobs, cache_path: Path, n_frames: int):
     return records
 
 
+def split_by_identity(labels, groups, holdout_frac: float, seed: int):
+    """-> (train_idx, holdout_idx). Whole identities, stratified by label.
+
+    Grouping alone is not enough. Assigning identities to sides at random can
+    hand one side a single class -- a smoke test on a small sample produced a
+    training split that was 0% fake, which teaches the model to answer "real"
+    to everything and looks like a plausible run until the metrics arrive.
+    StratifiedGroupKFold keeps identities whole AND both classes present.
+    """
+    from sklearn.model_selection import StratifiedGroupKFold
+
+    y = np.asarray(labels)
+    n_splits = max(2, min(int(round(1.0 / max(holdout_frac, 1e-6))), len(set(groups))))
+    sgkf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    train_idx, hold_idx = next(sgkf.split(np.zeros(len(y)), y, groups))
+
+    for name, idx in (("train/calibration", train_idx), ("held-out", hold_idx)):
+        if len(set(y[idx])) < 2:
+            raise SystemExit(
+                f"The {name} split contains only one class. Use more clips, or "
+                f"a --holdout-frac closer to 0.5.")
+    assert not (set(np.asarray(groups)[train_idx]) &
+                set(np.asarray(groups)[hold_idx])), "identity leak across split"
+    return train_idx, hold_idx
+
+
 def group_split(records, holdout_frac: float, seed: int):
     """Split whole identity groups, never individual clips."""
-    groups = sorted({r["group"] for r in records})
-    rng = random.Random(seed)
-    rng.shuffle(groups)
-    n_hold = max(1, int(round(len(groups) * holdout_frac)))
-    hold = set(groups[:n_hold])
-    calib = [r for r in records if r["group"] not in hold]
-    heldout = [r for r in records if r["group"] in hold]
-    return calib, heldout
+    tr, ho = split_by_identity([r["label"] for r in records],
+                               [r["group"] for r in records], holdout_frac, seed)
+    return [records[i] for i in tr], [records[i] for i in ho]
 
 
 def _features(records, high_thresh):
