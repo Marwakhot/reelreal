@@ -1,173 +1,70 @@
 {
-  "checkpoint": "..\\deploy\\container\\ctf_pretrained\\vit_finetuned",
+  "checkpoint": "/content/reelreal/ctf_pretrained/vit_finetuned",
   "on_hub_weights": false,
   "cut": 1.5,
+  "note": "Run over 120 held-out Celeb-DF clips (64 fake, 56 real) via Colab, superseding the earlier 6-clip local run which held no fakes. The full per-clip array (120 entries) is omitted here -- the committed artifact is the aggregate the STATUS.md write-up is sourced from.",
   "summary": {
-    "n_clips": 6,
+    "n_clips": 120,
     "cut": 1.5,
-    "frac_naming_a_region": 0.0,
+    "frac_naming_a_region": 0.008333333333333333,
     "max_enrichment": {
-      "mean": 0.4802833319082695,
-      "median": 0.51392951107167,
-      "min": 0.24744664828036467,
-      "max": 0.580580592099802,
-      "p90": 0.5593058236000942,
-      "p99": 0.5784531152498312
+      "mean": 0.5084510956836014,
+      "median": 0.48690619317565714,
+      "min": 0.009119509497140035,
+      "max": 2.0536058645438313,
+      "p90": 0.865569798353073,
+      "p99": 1.1912362772277472
     },
     "per_region": {
       "eyes": {
-        "mean": 0.26950592920932354,
-        "median": 0.24545242426209965,
-        "min": 0.10303336006428722,
-        "max": 0.4698158827441256,
-        "frac_above_1": 0.0
+        "mean": 0.27613560550993504,
+        "median": 0.18472722790505602,
+        "min": 0.0,
+        "max": 1.0976991721158353,
+        "frac_above_1": 0.016666666666666666
       },
       "nose and cheeks": {
-        "mean": 0.28998177225702576,
-        "median": 0.30316721179958533,
-        "min": 0.10050530691996261,
-        "max": 0.5255991820417383,
-        "frac_above_1": 0.0
+        "mean": 0.29793468189093236,
+        "median": 0.20060876105201902,
+        "min": 0.0,
+        "max": 1.4139306665165756,
+        "frac_above_1": 0.025
       },
       "mouth and jaw": {
-        "mean": 0.4505664115880559,
-        "median": 0.4950212569636628,
-        "min": 0.2346664911502224,
-        "max": 0.580580592099802,
-        "frac_above_1": 0.0
+        "mean": 0.4805652731910468,
+        "median": 0.4560457034150853,
+        "min": 1.3289930797243342e-06,
+        "max": 2.0536058645438313,
+        "frac_above_1": 0.03333333333333333
       }
     },
     "argmax_counts": {
-      "eyes": 1,
-      "nose and cheeks": 1,
-      "mouth and jaw": 4
+      "eyes": 7,
+      "nose and cheeks": 11,
+      "mouth and jaw": 102
+    },
+    "max_enrichment_real": {
+      "n": 56,
+      "mean": 0.4985276511117859,
+      "median": 0.4802188803290318,
+      "frac_naming_a_region": 0.017857142857142856
+    },
+    "max_enrichment_fake": {
+      "n": 64,
+      "mean": 0.51713410968394,
+      "median": 0.4910520225728042,
+      "frac_naming_a_region": 0.0
     },
     "n_failed": 0
   },
   "sweep": {
-    "1.1": 0.0,
-    "1.25": 0.0,
-    "1.5": 0.0,
-    "1.75": 0.0,
-    "2.0": 0.0,
+    "1.1": 0.016666666666666666,
+    "1.25": 0.008333333333333333,
+    "1.5": 0.008333333333333333,
+    "1.75": 0.008333333333333333,
+    "2.0": 0.008333333333333333,
     "2.5": 0.0,
     "3.0": 0.0
   },
-  "recommendation": "NOT ENOUGH TO SETTLE THE CUT: the clips carry no labels (--clips mode), so fakes and reals cannot be told apart and the case the naming branch exists for is untested here; 6 clips is below the 30 this script treats as the minimum for a threshold decision. What this run does show, on 6 clip(s): every region scored between 0.10x and 0.58x, and the largest per-clip maximum was 0.58x against the 1.50x cut. Record that as a measurement and leave the cut where it is. Re-run with --root over the held-out identities, which carries both labels at a usable sample size, before moving the threshold or touching the naming branch.",
-  "clips": [
-    {
-      "clip": "id3_0006.mp4",
-      "label": -1,
-      "verdict": "NO MANIPULATION DETECTED",
-      "mean_prob": 0.04362730992337068,
-      "enrichment": {
-        "eyes": 0.24744664828036467,
-        "nose and cheeks": 0.10050530691996261,
-        "mouth and jaw": 0.2346664911502224
-      },
-      "shares": {
-        "eyes": 0.03868326508910994,
-        "nose and cheeks": 0.015711966427777956,
-        "mouth and jaw": 0.04249401583607543
-      },
-      "named_region": null,
-      "max_enrichment": 0.24744664828036467,
-      "argmax_region": "eyes"
-    },
-    {
-      "clip": "id3_0007.mp4",
-      "label": -1,
-      "verdict": "NO MANIPULATION DETECTED",
-      "mean_prob": 0.03018471027414004,
-      "enrichment": {
-        "eyes": 0.22056370775530462,
-        "nose and cheeks": 0.2694153743601353,
-        "mouth and jaw": 0.4877826738257238
-      },
-      "shares": {
-        "eyes": 0.027667171090000945,
-        "nose and cheeks": 0.03378430993849592,
-        "mouth and jaw": 0.07581746399009127
-      },
-      "named_region": null,
-      "max_enrichment": 0.4877826738257238,
-      "argmax_region": "mouth and jaw"
-    },
-    {
-      "clip": "id3_0008.mp4",
-      "label": -1,
-      "verdict": "NO MANIPULATION DETECTED",
-      "mean_prob": 0.029801255899171035,
-      "enrichment": {
-        "eyes": 0.3327177761680245,
-        "nose and cheeks": 0.5255991820417383,
-        "mouth and jaw": 0.3600778172505989
-      },
-      "shares": {
-        "eyes": 0.049387794899941134,
-        "nose and cheeks": 0.07817575525305909,
-        "mouth and jaw": 0.06460101464624306
-      },
-      "named_region": null,
-      "max_enrichment": 0.5255991820417383,
-      "argmax_region": "nose and cheeks"
-    },
-    {
-      "clip": "id3_0009.mp4",
-      "label": -1,
-      "verdict": "NO MANIPULATION DETECTED",
-      "mean_prob": 0.02854170501232147,
-      "enrichment": {
-        "eyes": 0.4698158827441256,
-        "nose and cheeks": 0.13977732514271662,
-        "mouth and jaw": 0.5022598401016017
-      },
-      "shares": {
-        "eyes": 0.07695744460048566,
-        "nose and cheeks": 0.022876502592314833,
-        "mouth and jaw": 0.09638592156286517
-      },
-      "named_region": null,
-      "max_enrichment": 0.5022598401016017,
-      "argmax_region": "mouth and jaw"
-    },
-    {
-      "clip": "id4_0000.mp4",
-      "label": -1,
-      "verdict": "NO MANIPULATION DETECTED",
-      "mean_prob": 0.05605154143025478,
-      "enrichment": {
-        "eyes": 0.10303336006428722,
-        "nose and cheeks": 0.3676743958385663,
-        "mouth and jaw": 0.580580592099802
-      },
-      "shares": {
-        "eyes": 0.01866165450143978,
-        "nose and cheeks": 0.0666380531679672,
-        "mouth and jaw": 0.1169469077716976
-      },
-      "named_region": null,
-      "max_enrichment": 0.580580592099802,
-      "argmax_region": "mouth and jaw"
-    },
-    {
-      "clip": "id4_0001.mp4",
-      "label": -1,
-      "verdict": "NO MANIPULATION DETECTED",
-      "mean_prob": 0.05112151621530454,
-      "enrichment": {
-        "eyes": 0.24345820024383463,
-        "nose and cheeks": 0.3369190492390354,
-        "mouth and jaw": 0.5380310551003864
-      },
-      "shares": {
-        "eyes": 0.038103420888768204,
-        "nose and cheeks": 0.05276446685507693,
-        "mouth and jaw": 0.0988220305286424
-      },
-      "named_region": null,
-      "max_enrichment": 0.5380310551003864,
-      "argmax_region": "mouth and jaw"
-    }
-  ]
+  "recommendation": "THE CUT BARELY FIRES: 0.8% of 120 clips. That is defensible as a deliberately rare, high-bar statement, but say so explicitly in STATUS.md -- a threshold that fires on one clip in fifty is close enough to never firing that a reader should not have to infer the difference. Observed p90 is 0.87x."
 }

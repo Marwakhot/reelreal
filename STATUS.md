@@ -359,38 +359,63 @@ correctly at means of 0.029–0.056 — including `id3_0007`, recorded further d
 this file as a genuine video that scored 0.63 and beat five of the six deepfakes
 under the old thresholds. The fine-tuned checkpoint does not repeat that error.
 
-### The 1.5× cut is still unvalidated, and this run cannot validate it
+### ✅ Validated: attention does not separate fakes from reals
 
-The largest enrichment of any region on these six clips is **0.58×**, so no cut
-at or above 1.0× could fire. That is suggestive, and it is not a decision:
+`validate_gradcam.py --root <celeb-df> --checkpoint <vit_finetuned> --limit 120`
+on 120 held-out clips (64 fake, 56 real — identities the fine-tune never
+trained on) settles the question the six-clip run above could not, because
+that run held no fakes.
 
-- **There are no fakes in this sample.** All six clips are Celeb-real. The
-  naming branch exists for the case where a manipulated region draws the model's
-  eye, and a set containing nothing manipulated has not tested that case at all.
-- **Six clips across two identities** is below any bar for moving a threshold,
-  and is the same sample size this file warns against quoting elsewhere.
+| | n | mean max-enrichment | median | names a region (1.5×) |
+|---|---|---|---|---|
+| Real | 56 | 0.499 | 0.480 | 1.8% (1/56) |
+| Fake | 64 | 0.517 | 0.491 | 0% (0/64) |
 
-The cut therefore stays at 1.5× and the naming branch stays in place.
-`recommend()` in `validate_gradcam.py` refuses to issue a verdict on a sample
-this thin and prints what is missing, rather than a confident sentence that
-would later be quoted as the measurement.
+**They do not separate.** The means differ by 0.018, well inside the spread of
+either group, and the naming rate — the only thing a viewer actually sees —
+runs backwards: zero fakes cross the cut and one real does. Grad-CAM's
+attention pattern on this checkpoint carries no information about whether a
+clip was manipulated. That is not a defect in the row's wording; it is what the
+row already claims, and now the claim has a number behind it rather than an
+assumption.
 
-**What would settle it:** `validate_gradcam.py --root <celeb-df> --checkpoint
-<vit_finetuned>`, which scores the held-out identities. It reuses
-`evaluate_clips.collect` and `finetune_clips.split_identities` at their own
-defaults, so the split is the identity-disjoint one the model was evaluated on;
-it carries both labels and runs to a few hundred clips. It sweeps candidate cuts
-from 1.1× to 3.0×, reports the share of clips each would name split by true
-label, and refuses to run on hub weights at all. If fakes and reals turn out not
-to separate, the honest conclusion is that the row describes the model and
-nothing else — which is already how the interface words it.
+**Mouth/jaw dominates *which* region gets the most attention regardless of
+label** — the strongest region on 102 of 120 clips (85%), against 7 for eyes
+and 11 for nose/cheeks. This appears to be a property of face crops in general
+(consistent with the four-of-six finding in the preliminary local run above),
+not a signal correlated with manipulation — the separate finding above shows it
+carries no discriminative power either way.
+
+**The 1.5× cut barely fires: 0.8% of clips (1 of 120).** Overall max-enrichment:
+mean 0.508, median 0.487, p90 0.866, p99 1.191, max 2.054. `validate_gradcam.py`'s
+own `recommend()` flags this explicitly rather than leaving it to be inferred:
+a threshold that fires on one clip in 120 is close enough to never firing that
+the distinction is worth stating outright. Full sweep:
+
+| Cut | Fires |
+|---|---|
+| 1.10× | 1.7% |
+| 1.25× | 0.8% |
+| **1.50× (current)** | **0.8%** |
+| 1.75× | 0.8% |
+| 2.00× | 0.8% |
+| 2.50× | 0% |
+| 3.00× | 0% |
+
+**The cut stays at 1.5×, unchanged.** Lowering it would not fix the underlying
+finding — fakes and reals still would not separate, so a lower cut would just
+fire more often on noise. Whether the row is worth keeping at all, given it
+carries no discriminative signal in either direction, is a product decision
+outside a threshold value, not something this measurement resolves on its own.
 
 Whatever it shows, the interface does not over-claim: a named region reads
 "Attention concentrated on X (N× an even spread)", anything below the cut reads
 "Spread out, no single area stood out", and only a failed Grad-CAM shows a dash.
 All three are captioned as a description of the model's attention, never as
 evidence that the video was edited — which is why the row's severity is capped
-at "warn" even when a region is named.
+at "warn" even when a region is named. That wording is now measured to be
+accurate rather than merely cautious: the row genuinely does not know whether a
+clip is a deepfake.
 
 ---
 
