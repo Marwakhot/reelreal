@@ -41,12 +41,21 @@ COPY --chown=user site/           ./site/
 # app.py inserts PIPELINE_DIR into sys.path to import the detection pipeline.
 ENV PIPELINE_DIR=/home/user/app/ctf_pretrained
 
-# Bake the model into the image at build time. Without this the first visitor
-# waits out a ~340 MB download on top of the analysis itself, and on a container
-# that has just started from cold that reads as a hang.
-RUN python -c "from transformers import ViTForImageClassification, ViTImageProcessor; \
-m='prithivMLmods/Deep-Fake-Detector-v2-Model'; \
-ViTForImageClassification.from_pretrained(m); ViTImageProcessor.from_pretrained(m)"
+# The fine-tuned checkpoint must be present, and must load. It is gitignored
+# (~340 MB of safetensors), so a fresh clone will not have it -- copy it to
+# deploy/container/ctf_pretrained/vit_finetuned/ before building.
+#
+# This is a hard failure rather than a fallback on purpose. The stock hub
+# weights score at ROC-AUC 0.4899 on held-out Celeb-DF clips, which is chance,
+# and a container serving them looks completely healthy: it returns verdicts,
+# confidence numbers and evidence, all of them noise. Failing the build is the
+# only point at which that is still cheap to notice.
+RUN python -c "import sys; from pathlib import Path; \
+d = Path('/home/user/app/ctf_pretrained/vit_finetuned'); \
+sys.exit('MISSING %s -- see deploy/container/README.md' % d) if not (d / 'config.json').exists() else None; \
+from transformers import ViTForImageClassification, ViTImageProcessor; \
+ViTForImageClassification.from_pretrained(str(d)); ViTImageProcessor.from_pretrained(str(d)); \
+print('fine-tuned checkpoint loads')"
 
 # facenet-pytorch went in with --no-deps, so pip checked none of its imports.
 # Build the face detector once here: a missing dependency then fails the build

@@ -69,6 +69,24 @@ cp -r site/.           deploy/container/site/
 cp server/adapter.py   deploy/container/server/adapter.py
 ```
 
+## The fine-tuned checkpoint is required
+
+`ctf_pretrained/vit_finetuned/` holds the weights the detector actually uses. It
+is **gitignored** — ~340 MB of safetensors — so a fresh clone will not have it.
+Copy it in before building:
+
+```
+deploy/container/ctf_pretrained/vit_finetuned/
+```
+
+The build fails without it, deliberately. The stock hub weights score ROC-AUC
+0.4899 on held-out Celeb-DF clips — chance — and a container serving them looks
+entirely healthy while returning noise. Build time is the last cheap moment to
+notice.
+
+Regenerate it with `python finetune_clips.py --root <celeb-df> --out-dir reports`,
+which writes `reports/vit_finetuned/`.
+
 ## Known state of the detector
 
 `_score()` in `infer_pipeline.py` returns P(deepfake) from class index 1, which is

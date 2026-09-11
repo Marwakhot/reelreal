@@ -105,6 +105,42 @@ docstring already claimed it did.
 
 ---
 
+## Results
+
+Measured on **Celeb-DF v2**, splitting by identity so no person appears in both
+halves. Held-out: 226 clips across 56 identities, none seen during training.
+
+| | Off-the-shelf ViT | Fine-tuned on Celeb-DF |
+|---|---|---|
+| ROC-AUC | **0.4899** | **0.9814** |
+| Accuracy | — | 0.9248 (majority baseline 0.5973) |
+| F1 (fake) | — | 0.9017 |
+| F1 (real) | — | 0.9391 |
+| Recall @ 5% FPR | — | 0.9121 |
+| ECE | — | 0.0655 |
+
+Confusion matrix, fine-tuned: `tn=131 fp=4 fn=13 tp=78`.
+
+**The off-the-shelf number is the interesting one.** `prithivMLmods/Deep-Fake-Detector-v2-Model`
+scores at chance on Celeb-DF — 0.4899, with mean, max, p90 and flagged-fraction
+all landing between 0.46 and 0.53 (n=300, so the standard error is ~0.034). The
+weights carry no signal for this manipulation family at all. Fine-tuning on 125
+Celeb-DF identities fixed it.
+
+### What may and may not be claimed
+
+0.9814 is **in-dataset**: trained on Celeb-DF, tested on held-out Celeb-DF
+identities. It is not a general accuracy figure, and this project's own evidence
+argues against reading it as one — the 0.4899 result *is* a cross-dataset
+generalisation failure, measured on this very pipeline. A detector that transfers
+to unseen manipulation families has not been demonstrated here, and on the
+evidence above should not be assumed.
+
+Reproduce with `evaluate_clips.py` (baseline) and `finetune_clips.py` (fine-tune
+and evaluate). Both split by identity; see below for why that matters.
+
+---
+
 ## Thresholds — measured, and weaker than they look
 
 The decision thresholds were swept on **12 Celeb-DF-v2 clips** (6 Celeb-synthesis,

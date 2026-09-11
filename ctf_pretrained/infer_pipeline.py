@@ -42,33 +42,54 @@ class VideoAnalyzer:
     @classmethod
     def load(cls, ckpt_path=None, device: str = None, strict_preproc: bool = True
              ) -> "VideoAnalyzer":
-        """Loads the pre-trained Hugging Face Vision Transformer model directly."""
+        """Load the detector: the fine-tuned checkpoint if present, else the hub one."""
         device = device or get_device()
-        model_id = "prithivMLmods/Deep-Fake-Detector-v2-Model"
-        
-        print(f"Loading pre-trained Hugging Face model ({model_id})...")
+
+        # A fine-tuned checkpoint beside this file wins. finetune_clips.py
+        # writes it with save_pretrained(), so it loads through the same API as
+        # the hub model and needs no separate code path.
+        #
+        # This matters more than a normal fallback. The stock hub weights were
+        # measured at ROC-AUC 0.4899 on 300 held-out Celeb-DF clips -- chance.
+        # Fine-tuning on Celeb-DF identities reached 0.9814 on 226 clips from 56
+        # identities never seen in training. Running without the checkpoint is
+        # running a detector that does not detect anything.
+        finetuned = Path(__file__).resolve().parent / "vit_finetuned"
+        if (finetuned / "config.json").exists():
+            model_id, is_finetuned = str(finetuned), True
+            print(f"Loading fine-tuned model from {finetuned}")
+        else:
+            model_id, is_finetuned = "prithivMLmods/Deep-Fake-Detector-v2-Model", False
+            print(f"WARNING: no fine-tuned checkpoint at {finetuned}. Falling back "
+                  f"to {model_id}, which scores at chance (ROC-AUC 0.49) on "
+                  f"Celeb-DF. Verdicts will be meaningless.")
+
         model = ViTForImageClassification.from_pretrained(model_id).to(device)
         model.eval()
-        
+
         processor = ViTImageProcessor.from_pretrained(model_id)
-        
-        # PROVISIONAL thresholds, fitted by sweep on 12 Celeb-DF-v2 clips (6
-        # synthesis, 6 real) and therefore in-sample: 10 of the 12 land on the
-        # right side of 0.40. Do not quote that as validation accuracy. They
-        # replace 0.7/0.9, which were hand-picked while _score() was returning
-        # P(real) - 0.25 and which no frame could reach once that was fixed.
-        #
-        # decision_thresh applies to the clip mean; high_thresh only marks
-        # individual frames for the evidence panel and timeline colouring, and
-        # no longer decides the verdict.
+
+        if is_finetuned:
+            # 0.5 on the clip mean is the operating point the held-out
+            # evaluation actually reported: accuracy 0.9248, F1(fake) 0.9017,
+            # ECE 0.0655. The fine-tuned outputs are calibrated enough that the
+            # mean needs no further correction, so no clip calibrator is fitted.
+            # 0.397 would buy recall 0.912 at a 5% false-positive rate if
+            # missing fakes ever mattered more than accusing real footage.
+            thresholds = {"decision_thresh": 0.50, "high_thresh": 0.50}
+        else:
+            # Provisional, swept on 12 clips and therefore in-sample. Retained
+            # only so the fallback path is not entirely arbitrary; the model it
+            # applies to is at chance regardless.
+            thresholds = {"decision_thresh": 0.40, "high_thresh": 0.60}
+
         dummy_ckpt = {
             "arch": "vit",
             "temperature": 1.0,
-            "decision_thresh": 0.40,
-            "high_thresh": 0.60,
-            "clip_calibrator": None
+            "clip_calibrator": None,
+            **thresholds,
         }
-        
+
         analyzer = cls(model, processor, dummy_ckpt, device)
 
         # A calibration file sitting beside the pipeline is picked up
