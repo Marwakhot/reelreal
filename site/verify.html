@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify a receipt — REEL/REAL</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Squada+One&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<header class="mast">
+  <div class="wrap mast-in">
+    <a href="index.html" class="mark">REEL<span>/</span>REAL</a>
+    <nav>
+      <a href="index.html#detect">Check a video</a>
+      <a href="index.html#method">Method</a>
+      <a href="verify.html">Verify a receipt</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="upload">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Verify a receipt</h2>
+      <span id="keyLine">Checking the signing key…</span>
+    </div>
+
+    <!-- The honest framing, stated before the tool rather than under it. A
+         receipt binds a result to a file; it says nothing about whether the
+         video is genuine. Getting this wrong would turn a verification tool
+         into a false certificate of authenticity. -->
+    <div class="caveat verify-intro">
+      <b>What a receipt proves:</b> that this detector produced this verdict, for
+      the exact file with that SHA-256, at that time — and that nobody edited the
+      numbers afterwards. <b>What it does not prove:</b> that the video is
+      genuine, or that the verdict is right. A signed wrong answer is still a
+      wrong answer. The signature only removes the possibility of a doctored
+      report or one attached to a different clip.
+    </div>
+
+    <div class="verify-grid">
+      <div class="verify-cell">
+        <h3>1. The receipt</h3>
+        <p class="hint">Paste the JSON, or load the <code>.json</code> file saved
+           from a report.</p>
+        <textarea id="receiptText" spellcheck="false"
+                  placeholder='{ "payload": { … }, "signature": "…" }'></textarea>
+        <div class="verify-row">
+          <button class="btn ghost" id="pickReceipt">Load receipt file</button>
+          <input type="file" id="receiptFile" accept=".json,application/json" class="sr">
+        </div>
+      </div>
+
+      <div class="verify-cell">
+        <h3>2. The video <em>(optional)</em></h3>
+        <p class="hint">Adds the second half of the check: the file is hashed in
+           your browser and compared with the hash inside the receipt. It is
+           never uploaded.</p>
+        <div class="drop drop--small" id="videoDrop">
+          <p id="videoName">Drop the video here, or choose it</p>
+          <button class="btn ghost" id="pickVideo">Select video</button>
+          <input type="file" id="videoFile" accept="video/*" class="sr">
+        </div>
+        <p class="hint" id="hashLine"></p>
+      </div>
+    </div>
+
+    <div class="verify-row verify-actions">
+      <button class="btn" id="verify">Verify signature</button>
+      <button class="btn ghost" id="tamper" title="Change one number in the payload and verify again, to show the check actually bites">Demo: alter a number, then verify</button>
+    </div>
+
+    <!-- Result. Hidden until a check has actually run: an empty verdict box
+         reads as a passed check. -->
+    <div class="brutalist-panel verify-result" id="result">
+      <div class="verdict">
+        <div class="file">
+          <h3 id="vTitle">—</h3>
+          <p id="vReason">—</p>
+        </div>
+        <div class="badge" id="vBadge">—</div>
+      </div>
+      <div class="timeline">
+        <h4>What the receipt says</h4>
+        <div id="vFields"></div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap foot-in">
+    <span>REEL/REAL — Deepfake Detection System</span>
+    <span>Ed25519 receipt verification</span>
+  </div>
+</footer>
+
+<script src="js/config.js"></script>
+<script src="js/verify.js"></script>
+</body>
+</html>

@@ -9,7 +9,7 @@
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
   var targets = document.querySelectorAll(
-    '.sec-head, .drop h3, .method-grid .cell, .stat, .ev'
+    '.sec-head, .drop h3, .method-grid .cell, .flow-step, .stat, .ev'
   );
   if (!('IntersectionObserver' in window) || !targets.length) {
     targets.forEach(function (el) { el.classList.add('rr-in'); });

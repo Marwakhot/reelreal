@@ -71,6 +71,13 @@ html { scroll-behavior: smooth; }
 }
 
 a { color: inherit; text-decoration: none; }
+
+/* The `hidden` attribute has to win over component styles.
+   A browser's own [hidden] rule is a user-agent rule, so ANY author rule that
+   sets display beats it - `.btn { display: inline-block }` was quietly
+   un-hiding buttons that JavaScript had marked hidden, leaving a "Save signed
+   receipt" button on a result that has no receipt. */
+[hidden] { display: none !important; }
 :focus-visible { outline: 2px solid var(--forest-green); outline-offset: 3px; }
 
 /* Visually hidden but still announced by screen readers. Used for the real

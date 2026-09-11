@@ -416,19 +416,107 @@ html { scroll-padding-top: 96px; }
   line-height: 1.6;
 }
 
-/* Evidence sentences list */
-.evidence-list {
+/* ---------- Verdict state skins ----------
+   The report deliberately looks different in all three states, so that
+   "measured and nothing was found" is never mistaken for a weak flag or for a
+   check that did not run. app.js sets exactly one of these classes on the
+   panel. The default (no class) is the flagged look already defined above. */
+
+/* Measured, nothing found: a soft green wash and a green rule. */
+.brutalist-panel.state-clean {
+  background: linear-gradient(180deg, rgba(20, 77, 55, 0.07) 0%, var(--white) 260px);
+  border-color: var(--true);
+  box-shadow: 8px 8px 0 var(--true);
+}
+
+/* Not enough evidence to judge: deliberately unresolved. A dashed border
+   says "no call was made" in a way a colour alone cannot. */
+.brutalist-panel.state-unknown {
+  background: var(--white);
+  border-style: dashed;
+  border-color: var(--text-muted);
+  box-shadow: 8px 8px 0 rgba(42, 107, 80, 0.35);
+}
+
+/* The clean-result line. Hidden unless app.js opts it in, because it is a
+   statement about a result and must never appear over a missing one. */
+.clean-note {
+  display: none;
   margin: 0;
-  padding: 0 0 0 20px;
+  padding: 22px 28px 4px;
+  font-size: var(--step-1);
+  color: var(--true);
+  line-height: 1.5;
+}
+.clean-note::before {
+  content: "✓";
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-weight: 800;
+  margin-right: 10px;
+  display: inline-grid;
+  place-content: center;
+  width: 1.5em; height: 1.5em;
+  vertical-align: -.35em;
+  border-radius: 50%;
+  background: var(--true);
+  color: var(--white);
+  font-size: .62em;
+}
+.brutalist-panel.state-clean .clean-note { display: block; }
+
+/* Evidence sentences list — pinned-note styling. Each sentence is written by
+   the pipeline from a real number, so they are presented as individual
+   findings rather than as one run of prose. */
+.evidence-list {
+  counter-reset: evidence-item;
+  margin: 0;
+  padding: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 .evidence-list li {
+  counter-increment: evidence-item;
+  position: relative;
+  padding: 12px 16px 12px 46px;
   font-size: var(--step--1);
   color: var(--forest-green);
   line-height: 1.6;
+  background: var(--white);
+  border: 2px solid var(--forest-green);
+  border-radius: var(--radius-sm);
+  box-shadow: 3px 3px 0 rgba(20, 77, 55, 0.18);
+  transform: rotate(-0.35deg);
+  transform-origin: left center;
 }
+/* Alternate the tilt so the stack reads as hand-pinned rather than skewed. */
+.evidence-list li:nth-child(even) { transform: rotate(0.4deg); }
+
+/* Each sentence is numbered. The number comes from a CSS counter rather than
+   from the markup, so app.js still writes plain <li> text and the digits are
+   never part of the sentence a screen reader announces - the <ol> already
+   conveys the ordering to assistive tech.
+
+   This was a magnifier glyph until the CSS hex escape for it turned into a
+   control character in transit and rendered as five stray characters. A digit
+   cannot fail that way, and it carries more meaning than the icon did. */
+.evidence-list li::before {
+  content: counter(evidence-item);
+  position: absolute;
+  left: 12px; top: 11px;
+  width: 24px; height: 24px;
+  display: grid; place-content: center;
+  font-family: var(--font-display);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-muted);
+  border-radius: 50%;
+  background: var(--bg-cream);
+  border: 1px solid var(--border-color);
+}
+.brutalist-panel.state-clean .evidence-list li { border-color: var(--true); }
 
 .caveat { padding: 24px; color: var(--forest-green); font-size: var(--step--1); line-height: 1.7; }
 
@@ -533,3 +621,234 @@ footer {
   .glass-panel { backdrop-filter: none; background: #fff; box-shadow: none; }
   body { background: #fff; }
 }
+
+/* ============================================================================
+   VERIFY PAGE (verify.html)
+   ----------------------------------------------------------------------------
+   Reuses the report's panel, badge and .ev row styles so a verified receipt
+   reads as the same kind of object as the report it came from.
+   ========================================================================== */
+.verify-intro { padding: 20px 24px; margin-bottom: 28px; border: 2px solid var(--border-color); border-radius: var(--radius-sm); background: var(--white-trans); }
+
+.verify-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 860px) { .verify-grid { grid-template-columns: 1fr; } }
+
+.verify-cell { background: var(--white-trans); border: 2px solid var(--border-color); border-radius: var(--radius-sm); padding: 22px; }
+.verify-cell h3 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: var(--step-1);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--forest-green);
+}
+.verify-cell h3 em { font-family: var(--font-serif); text-transform: none; letter-spacing: 0; color: var(--text-muted); }
+.verify-cell .hint { margin: 0 0 14px; font-size: var(--step--1); color: var(--text-muted); line-height: 1.6; }
+
+#receiptText {
+  width: 100%; min-height: 190px; resize: vertical;
+  padding: 14px; border: 2px solid var(--border-color); border-radius: var(--radius-sm);
+  background: var(--white); color: var(--forest-green);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px; line-height: 1.55;
+}
+#receiptText:focus-visible { outline: 2px solid var(--forest-green); outline-offset: 2px; }
+
+/* A compact version of the uploader's drop zone. */
+.drop--small { padding: 26px 20px; min-height: 0; }
+.drop--small p { margin: 0 0 14px; font-size: var(--step--1); color: var(--text-muted); }
+
+.verify-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+.verify-actions { margin-top: 28px; }
+
+/* Hidden until a check has actually run - an empty verdict box reads as a
+   check that passed. */
+.verify-result { display: none; margin-top: 32px; }
+.verify-result.on { display: block; }
+
+#hashLine { margin: 12px 0 0; font-family: ui-monospace, Consolas, monospace; font-size: 11px; overflow-wrap: anywhere; }
+#vFields .ev b { min-width: 150px; }
+#vFields .ev span { font-family: ui-monospace, Consolas, monospace; font-size: 11px; overflow-wrap: anywhere; text-align: right; }
+
+/* ============================================================================
+   SERVER STATUS / SAMPLE CLIPS / RECENT CHECKS
+   ========================================================================== */
+
+/* Shown only once a probe has actually failed. Orange, not red-on-white decor:
+   this says the numbers on screen are invented, which is the single most
+   important thing the interface can tell you. */
+.server-note { display: none; margin-bottom: 24px; padding: 18px 22px; border: 3px solid var(--fake); border-radius: 0; background: rgba(239, 99, 55, .08); box-shadow: 6px 6px 0 var(--fake); }
+.server-note.on { display: block; }
+.server-note b { display: block; font-family: var(--font-display); font-size: var(--step-1); letter-spacing: .04em; text-transform: uppercase; color: var(--fake); }
+.server-note span { display: block; margin-top: 6px; font-size: var(--step--1); color: var(--forest-green); line-height: 1.65; }
+.server-note code { font-family: ui-monospace, Consolas, monospace; font-size: .92em; background: var(--white); padding: 2px 6px; border: 1px solid var(--border-color); }
+
+.samples, .history { margin-top: 28px; }
+.samples h4, .history h4 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: var(--step-1);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--forest-green);
+}
+.samples .hint, .history .hint { margin: 0 0 14px; font-size: var(--step--1); color: var(--text-muted); line-height: 1.6; }
+
+.sample-row, .history-row { display: flex; gap: 12px; flex-wrap: wrap; }
+
+.sample {
+  flex: 1 1 200px; text-align: left; cursor: pointer;
+  padding: 16px 18px; font: inherit;
+  background: var(--white); color: var(--forest-green);
+  border: 2px solid var(--forest-green); border-radius: var(--radius-sm);
+  box-shadow: 4px 4px 0 var(--forest-green);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.sample:hover:not(:disabled) { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--forest-green); }
+.sample:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--forest-green); }
+.sample:disabled { opacity: .55; cursor: progress; }
+.sample b { display: block; font-size: var(--step-0); font-weight: 700; overflow-wrap: anywhere; }
+.sample .sample-truth { display: inline-block; margin-top: 6px; padding: 2px 10px; border-radius: 50px; background: var(--green-glass); border: 1px solid var(--border-color); font-size: var(--step--1); color: var(--text-muted); }
+.sample em { display: block; margin-top: 8px; font-family: var(--font-serif); font-size: var(--step--1); color: var(--text-muted); }
+
+.history-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+
+.link-btn { background: none; border: none; padding: 0; font: inherit; font-size: var(--step--1); font-weight: 600; color: var(--text-muted); text-decoration: underline; cursor: pointer; }
+.link-btn:hover { color: var(--forest-green); }
+
+.hist {
+  flex: 1 1 190px; padding: 14px 16px;
+  background: var(--white-trans); border: 2px solid var(--border-color);
+  border-radius: var(--radius-sm); border-left-width: 6px;
+}
+.hist b { display: block; font-size: var(--step--1); font-weight: 700; color: var(--forest-green); overflow-wrap: anywhere; }
+.hist span { display: block; margin-top: 4px; font-size: var(--step--1); color: var(--text-muted); }
+.hist em { display: block; margin-top: 6px; font-family: var(--font-serif); font-size: var(--step--1); color: var(--text-muted); }
+.hist .link-btn { margin-top: 8px; }
+
+/* One border colour per state, matching the report's own three-state skin. */
+.hist--authentic { border-left-color: var(--true); }
+.hist--synthetic { border-left-color: var(--fake); }
+.hist--inconclusive { border-left-color: var(--text-muted); border-left-style: dashed; }
+.hist--sim { border-left-color: var(--warn); background: rgba(217, 119, 6, .07); }
+
+/* ============================================================================
+   METHOD FLOW — the pipeline as a numbered sequence
+   ----------------------------------------------------------------------------
+   Replaces three equal cards with an ordered list, because the three cards were
+   describing stages that happen in an order and looked like independent
+   features. Step numbers come from a CSS counter, so the markup stays a plain
+   <ol> and a screen reader gets the ordering from the list itself.
+   ========================================================================== */
+.flow {
+  counter-reset: flow-step;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 44px 32px;
+  position: relative;
+}
+
+.flow-step {
+  counter-increment: flow-step;
+  position: relative;
+  padding: 26px 22px 22px;
+  background: var(--white);
+  border: 3px solid var(--forest-green);
+  box-shadow: 8px 8px 0 var(--forest-green);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.flow-step:hover { transform: translate(-3px, -3px); box-shadow: 11px 11px 0 var(--forest-green); }
+
+/* The step number sits on the top-left corner of the card, overlapping the
+   border so the sequence reads before the words do. */
+.flow-step::before {
+  content: counter(flow-step);
+  position: absolute;
+  top: -20px; left: -14px;
+  width: 44px; height: 44px;
+  display: grid; place-content: center;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--white);
+  background: var(--accent-orange);
+  border: 3px solid var(--forest-green);
+  border-radius: 50%;
+}
+
+/* The connector to the next step. Drawn only between cards on the same row:
+   the last item in each row has nothing to its right to point at. */
+.flow-step::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -32px;
+  width: 32px;
+  height: 3px;
+  background: repeating-linear-gradient(90deg,
+    var(--forest-green) 0 7px, transparent 7px 13px);
+}
+.flow-step:nth-child(3n)::after,
+.flow-step:last-child::after { content: none; }
+
+.flow-step h3 {
+  margin: 0 0 10px;
+  padding-left: 24px;            /* clear of the number badge */
+  font-family: var(--font-display);
+  font-size: var(--step-1);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--forest-green);
+}
+.flow-step p { margin: 0; font-size: var(--step--1); line-height: 1.7; color: var(--text-muted); }
+.flow-step em { font-family: var(--font-serif); font-style: italic; color: var(--forest-green); }
+
+@media (max-width: 900px) {
+  .flow { grid-template-columns: 1fr; gap: 40px; }
+  /* Stacked, the connector turns to point downwards instead of sideways. */
+  .flow-step::after {
+    top: auto; bottom: -40px; right: auto; left: 28px;
+    width: 3px; height: 40px;
+    background: repeating-linear-gradient(180deg,
+      var(--forest-green) 0 7px, transparent 7px 13px);
+  }
+  .flow-step:nth-child(3n)::after { content: ""; }
+  .flow-step:last-child::after { content: none; }
+}
+
+/* ----------------------------------------------------------------------------
+   VERIFY PANEL STATES
+   ----------------------------------------------------------------------------
+   Three outcomes, three skins, mirroring the report's own three-state rule.
+   A failed signature and a receipt that belongs to a different video are NOT
+   the same finding, so they do not share a colour: one means someone altered
+   the numbers, the other means the receipt is genuine and simply describes a
+   different clip.
+   -------------------------------------------------------------------------- */
+
+/* Signature broken, or the receipt is unreadable - and, on the report, a clip
+   the detector flagged as manipulated. The same wash in both places is
+   deliberate: it is the project's one "something is wrong here" colour, the
+   same --fake used by the badge, the timeline bars and the legend. */
+.brutalist-panel.state-flagged,
+.brutalist-panel.state-invalid {
+  background: linear-gradient(180deg, rgba(239, 99, 55, .10) 0%, var(--white) 260px);
+  border-color: var(--fake);
+  box-shadow: 8px 8px 0 var(--fake);
+}
+.brutalist-panel.state-flagged .verdict .file h3,
+.brutalist-panel.state-invalid .verdict .file h3 { color: var(--fake); }
+.brutalist-panel.state-flagged .badge,
+.brutalist-panel.state-invalid .badge { border-color: var(--fake); color: var(--fake); background: rgba(239, 99, 55, .1); }
+
+/* Signature good, but it is about some other file. */
+.brutalist-panel.state-warn {
+  background: linear-gradient(180deg, rgba(217, 119, 6, .10) 0%, var(--white) 260px);
+  border-color: var(--warn);
+  box-shadow: 8px 8px 0 var(--warn);
+}
+.brutalist-panel.state-warn .verdict .file h3 { color: var(--warn); }
+.brutalist-panel.state-warn .badge { border-color: var(--warn); color: var(--warn); background: rgba(217, 119, 6, .1); }

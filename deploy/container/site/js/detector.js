@@ -409,6 +409,10 @@
      index.html with no build step and no local server. */
   global.ReelReal = {
     analyzeVideo: analyzeVideo,
+    /* Where this page thinks the detector lives. Exposed so the UI can probe
+       /health and name the address in an error, without duplicating the
+       fallback logic that decides it. */
+    apiBase: function () { return API_BASE; },
     encodeResult: encodeResult,
     decodeResult: decodeResult,
     formatClock: formatClock,

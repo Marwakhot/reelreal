@@ -1,0 +1,145 @@
+{
+  "api": "http://127.0.0.1:8000",
+  "clip": "id0_0000.mp4",
+  "checkedAt": "2026-09-11T21:13:25",
+  "serverHealthyAfterwards": true,
+  "cases": [
+    {
+      "case": "empty file",
+      "status": 400,
+      "expected": [
+        400
+      ],
+      "passed": true,
+      "seconds": 0.01,
+      "why": "0 bytes is not a video; the server rejects it before the model.",
+      "response": "Empty upload."
+    },
+    {
+      "case": "not a video",
+      "status": 400,
+      "expected": [
+        400,
+        415,
+        422
+      ],
+      "passed": true,
+      "seconds": 0.02,
+      "why": "A PDF renamed .mp4 passes the extension check, so something downstream must catch it. A 200 here would be a real bug.",
+      "response": "No video frames could be decoded from this file. It may be corrupt, or not a video despite its name."
+    },
+    {
+      "case": "truncated video",
+      "status": 400,
+      "expected": [
+        200,
+        400,
+        415,
+        422
+      ],
+      "passed": true,
+      "seconds": 0.04,
+      "why": "A partial file may still decode a few frames. Either a verdict or a clean rejection is defensible; a crash is not.",
+      "response": "No video frames could be decoded from this file. It may be corrupt, or not a video despite its name."
+    },
+    {
+      "case": "wrong extension",
+      "status": 415,
+      "expected": [
+        415
+      ],
+      "passed": true,
+      "seconds": 0.05,
+      "why": "Extension allow-list rejects it without reading the bytes.",
+      "response": "Unsupported file type '.txt'. Allowed: .avi, .m4v, .mkv, .mov, .mp4, .webm"
+    },
+    {
+      "case": "no extension",
+      "status": 415,
+      "expected": [
+        415
+      ],
+      "passed": true,
+      "seconds": 0.04,
+      "why": "An empty suffix must not be treated as permitted.",
+      "response": "Unsupported file type '(none)'. Allowed: .avi, .m4v, .mkv, .mov, .mp4, .webm"
+    },
+    {
+      "case": "missing field",
+      "status": 422,
+      "expected": [
+        422
+      ],
+      "passed": true,
+      "seconds": 0.03,
+      "why": "FastAPI validates the required form field before any handler runs.",
+      "response": "[{'type': 'missing', 'loc': ['body', 'video'], 'msg': 'Field required', 'input': None, 'url': 'https://errors.pydantic.dev/2.5/v/missing'}]"
+    },
+    {
+      "case": "wrong field name",
+      "status": 422,
+      "expected": [
+        422
+      ],
+      "passed": true,
+      "seconds": 0.05,
+      "why": "The API takes 'video'; anything else is a client error, not a 500.",
+      "response": "[{'type': 'missing', 'loc': ['body', 'video'], 'msg': 'Field required', 'input': None, 'url': 'https://errors.pydantic.dev/2.5/v/missing'}]"
+    },
+    {
+      "case": "over size cap",
+      "status": 413,
+      "expected": [
+        413
+      ],
+      "passed": true,
+      "seconds": 1.63,
+      "why": "One byte over the 200 MB cap; the stream must abort mid-upload rather than buffer the whole thing first.",
+      "response": "File larger than 200 MB."
+    },
+    {
+      "case": "unicode filename",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "seconds": 7.31,
+      "why": "Arabic and an emoji in the name. The name is only echoed as text, never used to build a path, so this must simply work.",
+      "response": "{\"id\":\"an_a55b996a29\",\"fileName\":\"\u0645\u0642\u0637\u0639 \ud83c\udfac.mp4\",\"fileSizeBytes\":2345071,\"durationSeconds\":15.633333333333333,\"resolution\":\"500p\",\"verdict\":\"authentic\",\"confidence\":0.0472,\"confidenceLabel\":\"High\",\"calib"
+    },
+    {
+      "case": "path traversal",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "seconds": 7.35,
+      "why": "Must be analysed normally with nothing written outside the temp directory. _save_upload generates its own filename.",
+      "response": "{\"id\":\"an_2f75dd1e68\",\"fileName\":\"../../etc/passwd.mp4\",\"fileSizeBytes\":2345071,\"durationSeconds\":15.633333333333333,\"resolution\":\"500p\",\"verdict\":\"authentic\",\"confidence\":0.0472,\"confidenceLabel\":\"Hi"
+    },
+    {
+      "case": "double extension",
+      "status": 415,
+      "expected": [
+        415
+      ],
+      "passed": true,
+      "seconds": 0.05,
+      "why": "Only the final suffix counts, and .exe is not on the list.",
+      "response": "Unsupported file type '.exe'. Allowed: .avi, .m4v, .mkv, .mov, .mp4, .webm"
+    },
+    {
+      "case": "good clip, after all that",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "seconds": 7.09,
+      "why": "The happy path again at the end. This is the case that proves the server survived everything above it.",
+      "response": "{\"id\":\"an_2a648a9348\",\"fileName\":\"recheck.mp4\",\"fileSizeBytes\":2345071,\"durationSeconds\":15.633333333333333,\"resolution\":\"500p\",\"verdict\":\"authentic\",\"confidence\":0.0472,\"confidenceLabel\":\"High\",\"cali"
+    }
+  ]
+}

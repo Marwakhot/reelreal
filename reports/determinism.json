@@ -1,0 +1,95 @@
+{
+  "api": "http://127.0.0.1:8000",
+  "runs": 2,
+  "checkedAt": "2026-09-11T21:16:11",
+  "clips": [
+    {
+      "clip": "A-real.mp4",
+      "stable": true,
+      "verdict": "authentic",
+      "confidence": 0.1055,
+      "differences": [],
+      "seconds": [
+        5.43,
+        5.36
+      ]
+    },
+    {
+      "clip": "D-deepfake.mp4",
+      "stable": true,
+      "verdict": "synthetic",
+      "confidence": 0.9405,
+      "differences": [],
+      "seconds": [
+        5.56,
+        5.39
+      ]
+    },
+    {
+      "clip": "id3_0006.mp4",
+      "stable": true,
+      "verdict": "authentic",
+      "confidence": 0.0148,
+      "differences": [],
+      "seconds": [
+        6.35,
+        6.78
+      ]
+    },
+    {
+      "clip": "id3_0007.mp4",
+      "stable": true,
+      "verdict": "authentic",
+      "confidence": 0.012,
+      "differences": [],
+      "seconds": [
+        6.82,
+        6.95
+      ]
+    },
+    {
+      "clip": "id3_0008.mp4",
+      "stable": true,
+      "verdict": "authentic",
+      "confidence": 0.0118,
+      "differences": [],
+      "seconds": [
+        7.06,
+        7.31
+      ]
+    },
+    {
+      "clip": "id3_0009.mp4",
+      "stable": true,
+      "verdict": "authentic",
+      "confidence": 0.0116,
+      "differences": [],
+      "seconds": [
+        8.82,
+        8.25
+      ]
+    },
+    {
+      "clip": "id4_0000.mp4",
+      "stable": true,
+      "verdict": "authentic",
+      "confidence": 0.025,
+      "differences": [],
+      "seconds": [
+        8.2,
+        8.46
+      ]
+    },
+    {
+      "clip": "id4_0001.mp4",
+      "stable": true,
+      "verdict": "authentic",
+      "confidence": 0.0287,
+      "differences": [],
+      "seconds": [
+        7.41,
+        7.5
+      ]
+    }
+  ]
+}

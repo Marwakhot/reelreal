@@ -14,20 +14,105 @@
   var $ = function (sel) { return document.querySelector(sel); };
 
   /* ------------------------------------------------------------------------
-     Hero video pair — hover to preview
+     Hero video pair - both loop silently, hovering one turns its sound on
+     --------------------------------------------------------------------------
+     Every browser blocks autoplay with sound, and allows it without. So both
+     clips autoplay muted and keep looping, and hover only flips `muted`.
+
+     There is a second rule underneath that one: Chrome and Firefox will PAUSE a
+     media element that is unmuted before the user has interacted with the page
+     at all. Hovering is not an interaction by that definition - only a click,
+     tap or keypress is. So unmuting is attempted, and if the clip stops as a
+     result it is silently re-muted and restarted. A stopped frame in the hero
+     would look like a broken video; staying silent for one more moment does not.
      ---------------------------------------------------------------------- */
+  var REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   document.querySelectorAll('.slot').forEach(function (slot) {
     var video = slot.querySelector('video');
     var ghost = slot.querySelector('.ghost');
 
     // Only reveal the video once a frame is actually decodable, otherwise a
     // missing asset would show as a black rectangle instead of the placeholder.
-    video.addEventListener('loadeddata', function () { ghost.style.display = 'none'; });
+    video.addEventListener('loadeddata', function () {
+      ghost.style.display = 'none';
+      // Autoplay can be refused (a data-saver setting, an aggressive extension).
+      // Asking again once the first frame exists costs nothing and recovers it.
+      if (!REDUCED_MOTION) video.play().catch(function () {});
+    });
     video.addEventListener('error', function () { video.style.display = 'none'; });
 
-    slot.addEventListener('mouseenter', function () { video.play().catch(function () {}); });
-    slot.addEventListener('mouseleave', function () { video.pause(); });
+    slot.addEventListener('mouseenter', function () {
+      video.muted = false;
+      video.volume = 1;
+
+      var started = video.play();
+      if (started && started.catch) {
+        started.catch(function () { silence(video); });
+      }
+      // play() can resolve and the element still be paused a tick later when
+      // the autoplay policy steps in, so check the outcome rather than trusting
+      // the promise alone.
+      setTimeout(function () { if (video.paused) silence(video); }, 120);
+    });
+
+    slot.addEventListener('mouseleave', function () {
+      video.muted = true;
+      // Keep looping on the way out - the pair is meant to be alive on the page,
+      // not only while the pointer is on it.
+      if (!REDUCED_MOTION) video.play().catch(function () {});
+    });
+
+    /* Someone who has asked for reduced motion gets the old behaviour: still
+       until hovered. Two clips looping forever is exactly the kind of motion
+       that setting exists to stop. */
+    if (REDUCED_MOTION) {
+      video.autoplay = false;
+      video.pause();
+      slot.addEventListener('mouseleave', function () { video.pause(); });
+    }
   });
+
+  function silence(video) {
+    video.muted = true;
+    video.play().catch(function () {});
+  }
+
+  /* ------------------------------------------------------------------------
+     Is there actually a detection server?
+     --------------------------------------------------------------------------
+     detector.js falls back to a MOCKED result when the server cannot be
+     reached at all (see MOCK_FALLBACK). That fallback is useful for working on
+     the UI, and dangerous everywhere else: a simulated verdict looks exactly
+     like a measured one. This banner exists so the difference is visible
+     before anyone reads a number off the screen.
+
+     The check is passive - nothing is blocked while it runs, and the banner
+     only appears once a probe has actually failed.
+     ---------------------------------------------------------------------- */
+  var serverNote = $('#serverNote');
+  var serverReachable = null;          // null = not yet known
+
+  function showServerNote(reachable) {
+    serverReachable = reachable;
+    if (reachable) {
+      serverNote.classList.remove('on');
+      serverNote.textContent = '';
+      return;
+    }
+    serverNote.innerHTML =
+      '<b>No detection server at ' + ReelReal.apiBase() + '</b>' +
+      '<span>Anything you analyse now produces a <b>simulated</b> result - invented ' +
+      'numbers for working on the interface, not a measurement of your video. ' +
+      'Start the server with <code>cd server &amp;&amp; python -m uvicorn app:app --port 8000</code> ' +
+      'and reload.</span>';
+    serverNote.classList.add('on');
+  }
+
+  fetch(ReelReal.apiBase() + '/health', { method: 'GET' })
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+    .then(function () { showServerNote(true); })
+    .catch(function () { showServerNote(false); });
 
   /* ------------------------------------------------------------------------
      Upload staging
@@ -143,6 +228,9 @@
         }
       });
       renderReport(result, { playbackURL: objectURL });
+      // A mocked result means the probe was right, or the server died since.
+      if (result.isMock && serverReachable !== false) showServerNote(false);
+      rememberCheck(result);
     } catch (err) {
       barLabel.textContent = 'Analysis failed: ' + err.message;
     } finally {
@@ -205,6 +293,17 @@
     /* "clean" is the green treatment. Inconclusive is not a pass, so it keeps
        the neutral/alert styling rather than being coloured like a clean bill. */
     badge.classList.toggle('clean', result.verdict === 'authentic');
+
+    /* The panel itself carries the verdict state, so all three outcomes are
+       visually distinct: flagged (default), measured-and-clean (green wash +
+       the clean-note line), and not-enough-evidence (dashed, unresolved).
+       Driven off result.verdict only — it adds no claim of its own. */
+    var panel = $('#report .brutalist-panel');
+    if (panel) {
+      panel.classList.toggle('state-clean', result.verdict === 'authentic');
+      panel.classList.toggle('state-unknown', result.verdict === 'inconclusive');
+      panel.classList.toggle('state-flagged', result.verdict === 'synthetic');
+    }
 
     $('#stamp').textContent = 'Analysed in ' + (result.processingTimeMs / 1000).toFixed(1) +
                               's · model ' + result.modelVersion +
@@ -301,6 +400,18 @@
 
     renderTimeline(result, video, Boolean(opts.playbackURL));
 
+    /* The signed receipt, offered only when the server actually issued one.
+       A mocked result has no receipt and must never appear to have one: the
+       whole point of the signature is that it distinguishes a real analysis
+       from an invented one. */
+    var saveBtn = $('#saveReceipt');
+    var verifyLink = $('#openVerify');
+    saveBtn.hidden = !result.receipt;
+    verifyLink.hidden = !result.receipt;
+    if (result.receipt) {
+      saveBtn.onclick = function () { downloadReceipt(result.receipt, result.fileName); };
+    }
+
     $('#report').classList.add('on');
     $('#report').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -358,6 +469,197 @@
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
     document.getElementById('detect').scrollIntoView({ behavior: 'smooth' });
   });
+
+  /* ------------------------------------------------------------------------
+     Sample clips
+     --------------------------------------------------------------------------
+     Filled from assets/samples/samples.json. The strip stays hidden when that
+     file is missing, which is the normal state of a fresh clone: the test
+     footage is licensed for research use and is not redistributable, so no
+     clip is ever committed. scripts/make_samples.py builds the folder from
+     clips you already hold.
+
+     A sample is fetched as a real Blob and staged exactly like a file you
+     picked yourself, so pressing one runs the same analysis over the same
+     upload path. Nothing here shortcuts the detector.
+     ---------------------------------------------------------------------- */
+  function loadSamples() {
+    fetch('assets/samples/samples.json', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('no manifest')); })
+      .then(function (manifest) {
+        var clips = (manifest && manifest.clips) || [];
+        if (!clips.length) return;
+
+        var row = $('#sampleRow');
+        clips.forEach(function (clip) {
+          var button = document.createElement('button');
+          button.className = 'sample';
+          button.type = 'button';
+
+          var name = document.createElement('b');
+          name.textContent = clip.title || clip.file;
+          var truth = document.createElement('span');
+          /* The dataset's ground truth, not a prediction. "Real (Celeb-DF)"
+             tells you what the clip is; it deliberately does not tell you what
+             the detector will say about it. */
+          truth.textContent = clip.groundTruth || 'unlabelled';
+          truth.className = 'sample-truth';
+          button.appendChild(name);
+          button.appendChild(truth);
+          if (clip.note) {
+            var note = document.createElement('em');
+            note.textContent = clip.note;
+            button.appendChild(note);
+          }
+
+          button.addEventListener('click', function () {
+            button.disabled = true;
+            var previous = name.textContent;
+            name.textContent = 'Loading...';
+            fetch('assets/samples/' + encodeURIComponent(clip.file))
+              .then(function (r) { return r.ok ? r.blob() : Promise.reject(new Error('HTTP ' + r.status)); })
+              .then(function (blob) {
+                // Wrapped in a File so the staging path, the preview and the
+                // upload all behave exactly as they do for a chosen file.
+                stageFile(new File([blob], clip.file, { type: blob.type || 'video/mp4' }));
+              })
+              .catch(function (err) {
+                name.textContent = 'Could not load: ' + err.message;
+              })
+              .finally(function () {
+                button.disabled = false;
+                if (name.textContent === 'Loading...') name.textContent = previous;
+              });
+          });
+
+          row.appendChild(button);
+        });
+        $('#samples').hidden = false;
+      })
+      .catch(function () { /* no samples installed: the strip stays hidden */ });
+  }
+  loadSamples();
+
+  /* ------------------------------------------------------------------------
+     Recent checks
+     --------------------------------------------------------------------------
+     A short history in localStorage so a run of clips reads as a sequence
+     rather than as one isolated verdict. Metadata and the signed receipt only
+     - the video itself is never stored anywhere.
+     ---------------------------------------------------------------------- */
+  var HISTORY_KEY = 'reelreal.history';
+  var HISTORY_MAX = 6;
+
+  /* The same three phrases the report's badge uses. Kept here rather than
+     reusing ReelReal.labelFor, which maps a numeric SCORE to a band and would
+     silently answer "authentic" for every verdict string handed to it.
+     Inconclusive keeps its own wording: it is not a pass. */
+  var VERDICT_WORDS = {
+    synthetic: 'Likely AI-manipulated',
+    authentic: 'No signs of manipulation',
+    inconclusive: 'Not enough face visible to judge'
+  };
+
+  function readHistory() {
+    try {
+      var raw = localStorage.getItem(HISTORY_KEY);
+      var parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+      // Private windows and blocked site data throw on access rather than
+      // returning null, so every read and write here is guarded.
+      return [];
+    }
+  }
+
+  function writeHistory(entries) {
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(entries)); }
+    catch (err) { /* storage unavailable or full: history is a convenience */ }
+  }
+
+  function rememberCheck(result) {
+    var entries = readHistory();
+    entries.unshift({
+      name: result.fileName,
+      verdict: result.verdict,
+      // Kept as the same rounded value the report shows, so the two can never
+      // disagree; a simulated result is marked as one.
+      confidence: result.confidence,
+      simulated: !!result.isMock,
+      at: Date.now(),
+      receipt: result.receipt || null
+    });
+    writeHistory(entries.slice(0, HISTORY_MAX));
+    renderHistory();
+  }
+
+  function renderHistory() {
+    var entries = readHistory();
+    var panel = $('#history');
+    var row = $('#historyRow');
+    row.innerHTML = '';
+
+    if (!entries.length) { panel.hidden = true; return; }
+    panel.hidden = false;
+
+    entries.forEach(function (entry) {
+      var chip = document.createElement('div');
+      chip.className = 'hist hist--' + (entry.simulated ? 'sim' : entry.verdict);
+
+      var name = document.createElement('b');
+      name.textContent = entry.name;
+      chip.appendChild(name);
+
+      var verdict = document.createElement('span');
+      verdict.textContent = entry.simulated
+        ? 'simulated - not a measurement'
+        : VERDICT_WORDS[entry.verdict] +
+          (entry.verdict === 'inconclusive' || typeof entry.confidence !== 'number'
+            ? '' : ' \u00b7 ' + Math.round(entry.confidence * 100) + '%');
+      chip.appendChild(verdict);
+
+      var when = document.createElement('em');
+      when.textContent = new Date(entry.at).toLocaleTimeString();
+      chip.appendChild(when);
+
+      // A receipt is only offered when one was actually issued.
+      if (entry.receipt) {
+        var save = document.createElement('button');
+        save.className = 'link-btn';
+        save.textContent = 'receipt';
+        save.addEventListener('click', function () {
+          downloadReceipt(entry.receipt, entry.name);
+        });
+        chip.appendChild(save);
+      }
+
+      row.appendChild(chip);
+    });
+  }
+
+  $('#clearHistory').addEventListener('click', function () {
+    try { localStorage.removeItem(HISTORY_KEY); } catch (err) { /* nothing to do */ }
+    renderHistory();
+  });
+
+  renderHistory();
+
+  /* ------------------------------------------------------------------------
+     Signed receipts
+     ---------------------------------------------------------------------- */
+  function downloadReceipt(receipt, fileName) {
+    var blob = new Blob([JSON.stringify(receipt, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = (fileName || 'analysis').replace(/\.[^.]+$/, '') + '.receipt.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Revoke on the next tick: revoking synchronously can cancel the download
+    // before the browser has read the blob.
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
 
   /* ------------------------------------------------------------------------
      Handoff from the Chrome extension

@@ -22,3 +22,7 @@ matplotlib==3.9.2
 numpy>=1.26,<3
 Pillow>=10.0
 tqdm==4.66.5
+
+# Ed25519 signing and verification for the verdict receipts (server/receipt.py).
+# Pinned to the version this was built and tested against.
+cryptography==50.0.1

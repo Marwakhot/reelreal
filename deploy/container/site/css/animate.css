@@ -71,11 +71,11 @@
   .sec-head.rr-in::after { animation: rrUnderline .8s ease .15s forwards; }
 
   /* ---------- Cards: staggered rise-in ---------- */
-  .method-grid .cell, .stat, .ev {
+  .method-grid .cell, .flow-step, .stat, .ev {
     opacity: 0; transform: translateY(18px);
     transition: opacity .6s ease, transform .6s ease;
   }
-  .method-grid .cell.rr-in, .stat.rr-in, .ev.rr-in { opacity: 1; transform: translateY(0); }
+  .method-grid .cell.rr-in, .flow-step.rr-in, .stat.rr-in, .ev.rr-in { opacity: 1; transform: translateY(0); }
 
   /* ---------- Small hover flourish on the wordmark ---------- */
   .mark {

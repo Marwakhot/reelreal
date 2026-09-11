@@ -14,6 +14,12 @@ __pycache__/
 site/assets/*.mp4
 site/assets/*.webm
 
+# The "try a sample clip" strip, built by scripts/make_samples.py from clips
+# you already hold. The manifest is ignored along with the videos on purpose:
+# committing samples.json without the clips it names would give a fresh clone
+# a row of buttons that all fail to load.
+site/assets/samples/
+
 # Fine-tuned weights written by finetune_clips.py. ~340 MB of safetensors, which
 # does not belong in git. It IS needed to build the container image, so keep a
 # copy (Drive, a release asset) and place it at

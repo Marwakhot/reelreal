@@ -30,6 +30,7 @@
       <a href="#detect">Check a video</a>
       <a href="#method">Method</a>
       <a href="#limits">Limits</a>
+      <a href="verify.html">Verify a receipt</a>
     </nav>
   </div>
 </header>
@@ -49,14 +50,20 @@
       <div class="pair-wrapper">
         <div class="pair">
           <!-- Drop your own 9:16 clips at site/assets/reel.mp4 and
-               site/assets/real.mp4. Until then the green .ghost panel shows. -->
+               site/assets/real.mp4. Until then the green .ghost panel shows.
+
+               Both loop continuously and silently; hovering one turns its
+               sound on. They are marked `muted` in the markup because every
+               browser refuses to autoplay audio - app.js unmutes on hover,
+               and quietly stays silent where even that is blocked. -->
           <div class="phone-frame">
             <span class="phone-notch"></span>
             <span class="phone-btn phone-btn--power"></span>
             <span class="phone-btn phone-btn--vol"></span>
             <figure class="slot" style="margin:0">
               <div class="ghost"><b>reel.mp4</b>synthetic sample</div>
-              <video src="assets/reel.mp4" muted loop playsinline preload="metadata"></video>
+              <video src="assets/reel.mp4" muted loop autoplay playsinline preload="auto"
+                     title="Hover for sound"></video>
               <figcaption class="slot-tag"><span class="dot f"></span> REEL <em>generated</em></figcaption>
             </figure>
           </div>
@@ -69,7 +76,8 @@
             <span class="phone-btn phone-btn--vol"></span>
             <figure class="slot" style="margin:0">
               <div class="ghost"><b>real.mp4</b>authentic sample</div>
-              <video src="assets/real.mp4" muted loop playsinline preload="metadata"></video>
+              <video src="assets/real.mp4" muted loop autoplay playsinline preload="auto"
+                     title="Hover for sound"></video>
               <figcaption class="slot-tag"><span class="dot t"></span> REAL <em>original</em></figcaption>
             </figure>
           </div>
@@ -120,6 +128,12 @@
       <span>MP4 · MOV · WEBM — up to 200 MB</span>
     </div>
 
+    <!-- Backend reachability. Hidden until a check has actually failed, so it
+         never implies a problem that has not been observed. The site falls back
+         to a SIMULATED result when the server is unreachable, and that fact has
+         to be impossible to miss rather than a footnote in the timestamp. -->
+    <div class="server-note" id="serverNote"></div>
+
     <div class="drop" id="drop">
       <h3>Drop a clip here, or choose from device</h3>
       <p>Your video is sent to the analysis server and deleted as soon as the result is returned. You get a verdict and a timeline of which moments were flagged.</p>
@@ -133,6 +147,34 @@
         <span>✓ No re-encode needed</span>
         <span>✓ Deleted after analysis</span>
       </div>
+    </div>
+
+    <!-- Sample clips, filled from assets/samples/samples.json at runtime. The
+         strip stays hidden when that file is absent, which is the normal state
+         of a fresh clone: the test footage is licensed for research use and is
+         not redistributable, so it is never committed. scripts/make_samples.py
+         builds the folder from clips you already hold.
+
+         Each button is labelled with the clip's DATASET GROUND TRUTH, never
+         with an expected verdict - the point of pressing it is to find out what
+         the detector says, and pre-announcing that would defeat it. -->
+    <div class="samples" id="samples" hidden>
+      <h4>Or try a sample clip</h4>
+      <p class="hint">Labelled with what the dataset says each clip is. The
+         detector is run for real on whichever you pick.</p>
+      <div class="sample-row" id="sampleRow"></div>
+    </div>
+
+    <!-- Recent checks, from this browser's localStorage. Metadata only: no
+         video is ever stored. -->
+    <div class="history" id="history" hidden>
+      <div class="history-head">
+        <h4>Recent checks</h4>
+        <button class="link-btn" id="clearHistory">Clear</button>
+      </div>
+      <div class="history-row" id="historyRow"></div>
+      <p class="hint">Stored in this browser only - names, verdicts and receipts,
+         never the videos themselves.</p>
     </div>
 
     <div class="staged glass-panel" id="staged">
@@ -180,6 +222,12 @@
         </div>
         <div class="badge" id="rBadge">Likely synthetic</div>
       </div>
+
+      <!-- Clean-result note. Shown ONLY for verdict === 'authentic', so that
+           "measured and nothing was found" is visually a designed result and
+           cannot be mistaken for a weak flag or for an unrun check. It states
+           no measurement of its own; the numbers stay in the panels below. -->
+      <p class="clean-note serif" id="rCleanNote">Measured, and nothing was flagged.</p>
 
       <!-- Headline + guidance: spoken directly by the pipeline, shown only when
            a real result arrives (pipeline.headline / pipeline.guidance). -->
@@ -239,6 +287,9 @@
 
     <div class="report-actions">
       <button class="btn ghost" id="again">Check another video</button>
+      <!-- Shown only when the server actually returned a signed receipt. -->
+      <button class="btn ghost" id="saveReceipt" hidden>Save signed receipt</button>
+      <a class="btn ghost" id="openVerify" href="verify.html" hidden>Verify it</a>
     </div>
   </div>
 </section>
@@ -251,20 +302,43 @@
         <h2>Services &amp; Methodology</h2>
         <span class="serif">Multi-Signal Detection</span>
       </div>
-      <div class="method-grid">
-        <div class="cell glass-panel">
-          <h3>Spatial Analysis</h3>
-          <p>Every sampled frame is searched for faces. Each face found is cropped and scored by a vision transformer trained to separate generated faces from real ones, giving one score per frame.</p>
-        </div>
-        <div class="cell glass-panel">
-          <h3>Temporal Consistency</h3>
-          <p>Frame scores are compared across the whole clip. A sustained run of consecutive flagged frames is treated differently from the same number scattered at random, which is more often noise.</p>
-        </div>
-        <div class="cell glass-panel">
-          <h3>Coverage Check</h3>
-          <p>Frames with no clear face are counted. If too few frames contain one, the system reports insufficient evidence instead of guessing from the handful it did find.</p>
-        </div>
-      </div>
+      <!-- The same pipeline the report describes, told as the sequence it
+           actually runs in. Every number here is real: 30 sampled frames is
+           what the analyzer takes, and the last step is the genuine third
+           verdict, not a flourish. -->
+      <ol class="flow">
+        <li class="flow-step">
+          <h3>Your clip arrives</h3>
+          <p>It goes to the analysis server, and is deleted the moment the
+             verdict comes back. Nothing is kept.</p>
+        </li>
+        <li class="flow-step">
+          <h3>Snapshots, not the whole film</h3>
+          <p>Thirty moments are taken from across the clip, start to end.
+             Checking every single frame would be slower without being wiser.</p>
+        </li>
+        <li class="flow-step">
+          <h3>Find the face</h3>
+          <p>Each snapshot is searched for a face and cropped to it. The face is
+             where manipulation happens, so it is the only thing examined.</p>
+        </li>
+        <li class="flow-step">
+          <h3>Score each one</h3>
+          <p>Every cropped face is compared against thousands of real and
+             generated faces the system has studied, and given its own score.</p>
+        </li>
+        <li class="flow-step">
+          <h3>Look for a pattern</h3>
+          <p>Scattered odd frames are usually noise. A long unbroken run of them
+             is not, so the two are weighed differently.</p>
+        </li>
+        <li class="flow-step">
+          <h3>Answer, or say it cannot</h3>
+          <p>If too few snapshots held a face, you get
+             <em>not enough to judge</em> rather than a guess dressed up as an
+             answer.</p>
+        </li>
+      </ol>
     </div>
   </section>
 </div>

@@ -14,3 +14,7 @@ python-multipart==0.0.9
 
 # Imported by infer_pipeline.py but absent from the pipeline's own requirements.
 transformers==4.44.2
+
+# Ed25519 signing and verification for the verdict receipts (server/receipt.py).
+# Pinned to the version this was built and tested against.
+cryptography==50.0.1

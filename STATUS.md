@@ -611,9 +611,101 @@ These were deliberate and should not be "tidied away":
 
 ---
 
+## Signed verdict receipts
+
+Every analysis now returns a receipt: a small JSON object signed with an
+**Ed25519** key held by the server (`server/receipt.py`), stating that this
+detector produced this verdict for a file with this SHA-256 at this time.
+`site/verify.html` checks one in the browser with WebCrypto against the public
+key from `GET /v1/public-key`; `POST /v1/verify-receipt` exists only as a
+fallback for browsers without Ed25519, and the page says on screen which of the
+two did the checking.
+
+**What it does and does not claim.** It binds a result to a file and to this
+detector, so an edited number or a report attached to a different clip is
+detectable. It says nothing about whether the video is genuine or whether the
+verdict is correct — a signed wrong answer is still a wrong answer. The claim is
+written into the signed payload itself, in an `attests` field, so it cannot be
+stripped off in transit to make the receipt look stronger than it is.
+
+**Two implementation details worth not rediscovering.**
+
+*Numbers in the payload are decimal strings, not JSON floats.* Python writes the
+float `0.0` as `0.0` and JavaScript writes it as `0`, so a receipt with a
+confidence of exactly 0.0 or 1.0 would serialise to different canonical bytes in
+the two languages: valid in Python, invalid in the browser, and only for certain
+values. Strings remove the ambiguity instead of relying on both runtimes
+choosing the same shortest representation. Verified across both: a receipt
+signed by Python verifies under the browser's canonical form, and fails as soon
+as one digit of the score is changed.
+
+*Without `REELREAL_SIGNING_KEY` the server signs with a throwaway key* generated
+at startup, prints that to the log, and reports `ephemeral: true` from
+`/v1/public-key`, which the verify page shows. An ephemeral key must never be
+presented as a durable attestation: the signature is real but the identity
+behind it disappears on restart.
+
+---
+
+## Two harnesses that check the server, and what they found
+
+Both live in `scripts/`, need the server running, and write their results to
+`reports/`. Neither touches the model.
+
+### `check_determinism.py` — the same clip twice
+
+Analyses each clip N times through real HTTP requests and compares verdict, clip
+score, flagged-frame count, mean score and every timeline bar. **Last run: 8
+clips × 2 runs, every field identical** (`reports/determinism.json`).
+
+That is a repeatability check on six clips, not an accuracy claim — a detector
+that is confidently wrong every time passes it perfectly. It is worth having
+because a verdict that moves when the input did not is impossible to defend,
+and because it also covers the upload path and the adapter, not just the model.
+
+### `check_robustness.py` — deliberately awkward input
+
+Twelve cases, each declaring which HTTP statuses count as *correct handling*, so
+passing is not "nothing failed": a renamed PDF **should** be rejected and the
+script fails if it is accepted. The final case re-runs the happy path to prove
+the server did not get wedged by the eleven before it.
+**Last run: all 12 as declared, server healthy afterwards**
+(`reports/robustness.json`).
+
+#### ✅ Fixed — a 65-byte PDF got a verdict
+
+The first run caught it. A PDF renamed to `.mp4` passed the extension
+allow-list, decoded zero frames, and came back out of the pipeline as a full
+report reading **"not enough face visible to judge", with a confidence of
+0.0101** — and, once receipts existed, a signed attestation of that verdict.
+
+That verdict is a specific claim: *we looked at your video and could not tell.*
+Nothing had been looked at. `_probe_video()` in `server/app.py` now opens the
+file and reads one frame — `isOpened()` alone is too weak, OpenCV will happily
+"open" a file it can decode nothing from — and a file yielding no frames is
+rejected as input with a 400 rather than judged as evidence.
+
+#### ✅ Fixed — an analysis blocked every other request
+
+`analyze` was `async def` while doing blocking CPU work, which runs it directly
+on the event loop and stops the server answering anything until it finishes.
+Found while testing the site's new backend-reachability banner: the website
+probes `/health` to decide whether a real backend exists, and a probe that times
+out during someone else's analysis would tell the user their results are
+simulated when they are not. It is now a plain `def`, which FastAPI runs in a
+threadpool.
+
+---
+
 ## Running it
 
-See `server/README.md` for full setup. Short version, two terminals:
+**The canonical run guide is now [README.md](README.md) at the repository root** -
+that is the file someone cloning this reads first, and it carries the full
+install, the two terminals, the check scripts and the receipt key. What follows
+is the short version kept here for continuity; `server/README.md` has the
+detailed server setup.
+
+Short version, two terminals:
 
 ```bash
 cd server

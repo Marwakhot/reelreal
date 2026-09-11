@@ -26,6 +26,7 @@ load into memory. Every request after that reuses the loaded model.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import sys
@@ -34,11 +35,13 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 import adapter
+import receipt
 
 # --------------------------------------------------------------------------
 # Locating the pipeline
@@ -116,13 +119,17 @@ def _get_analyzer():
     return _analyzer
 
 
-def _save_upload(upload: UploadFile) -> Path:
-    """Stream the upload to a temp file and return its path.
+def _save_upload(upload: UploadFile) -> Tuple[Path, str]:
+    """Stream the upload to a temp file and return (path, sha256 hex).
 
     The client-supplied filename is deliberately not used for the path — only
     its extension is read, and even that is validated against an allow-list.
     A filename like "../../etc/passwd" therefore cannot influence where this
     writes. The name is passed through to the report separately, as text.
+
+    The SHA-256 is accumulated over the same chunks that are written to disk,
+    so hashing costs one pass and no extra memory. It is what binds a signed
+    receipt to this exact set of bytes (see receipt.py).
     """
     suffix = Path(upload.filename or "").suffix.lower()
     if suffix not in ALLOWED_SUFFIXES:
@@ -137,12 +144,14 @@ def _save_upload(upload: UploadFile) -> Path:
     dest = tmp_dir / ("%s%s" % (uuid.uuid4().hex, suffix))
 
     written = 0
+    digest = hashlib.sha256()
     with dest.open("wb") as out:
         while True:
             chunk = upload.file.read(1024 * 1024)
             if not chunk:
                 break
             written += len(chunk)
+            digest.update(chunk)
             if written > MAX_UPLOAD_BYTES:
                 out.close()
                 dest.unlink(missing_ok=True)
@@ -156,24 +165,64 @@ def _save_upload(upload: UploadFile) -> Path:
         dest.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail="Empty upload.")
 
-    return dest
+    return dest, digest.hexdigest()
 
 
-def _probe_resolution(path: Path) -> str:
-    """Read the pixel height so the report can say "720p". Best effort only."""
+def _probe_video(path: Path) -> Tuple[bool, str]:
+    """Can OpenCV actually decode this, and how tall is it?
+
+    Both questions are answered from one open because opening a video file is
+    the expensive part.
+
+    WHY THE DECODE CHECK EXISTS
+    ---------------------------
+    Without it, a file that is not a video at all - a PDF renamed to .mp4, say -
+    passes the extension allow-list, decodes zero frames, and comes back out of
+    the pipeline as a full report reading "not enough face visible to judge".
+
+    That verdict is a specific claim: *we looked at your video and could not
+    tell*. For a renamed PDF nothing was ever looked at, so the report states
+    something untrue, and since a signed receipt is issued alongside it, the
+    server would be cryptographically attesting a verdict about a document.
+
+    A file that yields no frames is therefore rejected as input rather than
+    judged as evidence. Found by scripts/check_robustness.py, which is what
+    that script is for.
+
+    Returns (decodable, resolution). Resolution is best effort and falls back
+    to "unknown" without affecting the decodable answer.
+    """
     try:
         import cv2
+    except Exception:                                 # noqa: BLE001
+        # No OpenCV: the pipeline has its own reader, so do not block the
+        # upload on a probe that could not run. Nothing is claimed either way.
+        return True, "unknown"
+
+    cap = None
+    try:
         cap = cv2.VideoCapture(str(path))
+        if not cap.isOpened():
+            return False, "unknown"
+
+        # Reading one frame is the actual test. isOpened() alone is too weak:
+        # OpenCV will happily "open" a file it can decode nothing from.
+        ok, _frame = cap.read()
+        if not ok:
+            return False, "unknown"
+
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-        cap.release()
         if h > 0:
-            return "%dp" % h
+            return True, "%dp" % h
         if w > 0:
-            return "%dx?" % w
-    except Exception:
-        pass
-    return "unknown"
+            return True, "%dx?" % w
+        return True, "unknown"
+    except Exception:                                 # noqa: BLE001
+        return False, "unknown"
+    finally:
+        if cap is not None:
+            cap.release()
 
 
 @app.get("/health")
@@ -187,13 +236,65 @@ def health():
     }
 
 
+@app.get("/v1/public-key")
+def public_key():
+    """The Ed25519 public key that signs receipts, so they can be verified.
+
+    Published openly on purpose: a verifier needs it, and it reveals nothing.
+    `ephemeral: true` means the server is running without REELREAL_SIGNING_KEY
+    and signing with a throwaway key that will not survive a restart.
+    """
+    try:
+        return receipt.public_key_info()
+    except ValueError as exc:
+        # A malformed REELREAL_SIGNING_KEY. Say exactly what is wrong instead of
+        # letting it surface as a bare 500 with no explanation.
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/v1/verify-receipt")
+def verify_receipt(body: Dict[str, Any] = Body(...)):
+    """Check a receipt's signature.
+
+    A convenience, not the authority: the point of Ed25519 is that anyone can
+    verify a receipt themselves with the public key above, without asking this
+    server anything. The verify page in the site does exactly that in the
+    browser and only falls back to this endpoint where WebCrypto has no Ed25519.
+
+    Accepts either the receipt object itself, or {"receipt": {...},
+    "publicKey": "<base64>"} to check against a key other than this server's.
+    """
+    candidate = body.get("receipt") if "receipt" in body else body
+    return receipt.verify(candidate, body.get("publicKey"))
+
+
 @app.post("/v1/analyze")
-async def analyze(video: UploadFile = File(...)):
-    """Analyse one uploaded video and return an AnalysisResult."""
+def analyze(video: UploadFile = File(...)):
+    """Analyse one uploaded video and return an AnalysisResult.
+
+    Deliberately a plain `def`, not `async def`. Everything inside is blocking
+    CPU work - decoding frames and running the model - and an `async` handler
+    runs that directly on the event loop, which stops the server answering
+    anything at all until it finishes. That is not a theoretical problem: the
+    website probes /health to decide whether a real backend exists, and a probe
+    that times out during someone else's analysis would tell the user their
+    results are simulated when they are not.
+
+    FastAPI runs a sync handler in a threadpool instead, so /health, the public
+    key and receipt verification stay responsive while a video is being scored.
+    """
     started = time.time()
-    path = _save_upload(video)
+    path, file_sha256 = _save_upload(video)
 
     try:
+        decodable, resolution = _probe_video(path)
+        if not decodable:
+            raise HTTPException(
+                status_code=400,
+                detail=("No video frames could be decoded from this file. It may "
+                        "be corrupt, or not a video despite its name."),
+            )
+
         analyzer = _get_analyzer()
         try:
             raw = analyzer.analyze(str(path))
@@ -203,15 +304,37 @@ async def analyze(video: UploadFile = File(...)):
                 detail="Analysis failed: %s: %s" % (type(exc).__name__, exc),
             )
 
-        return adapter.to_analysis_result(
+        result = adapter.to_analysis_result(
             raw,
             file_name=video.filename or path.name,
             file_size=path.stat().st_size,
-            resolution=_probe_resolution(path),
+            resolution=resolution,
             processing_ms=int((time.time() - started) * 1000),
             model_version=_model_version,
             analysed_at=datetime.now(timezone.utc).isoformat(),
         )
+
+        # Sign the verdict. Built from `result` rather than from `raw` so the
+        # receipt can only ever carry the same numbers the report displays.
+        # A failure to sign must not lose the analysis the user waited for, so
+        # it degrades to a result with no receipt and says why.
+        try:
+            result["receipt"] = receipt.build(
+                analysis_id=result["id"],
+                file_sha256=file_sha256,
+                file_name=result["fileName"],
+                file_size=result["fileSizeBytes"],
+                verdict=result["verdict"],
+                confidence=result["confidence"],
+                model_version=result["modelVersion"],
+                analysed_at=result["analysedAt"],
+                decision_threshold=(result.get("pipeline") or {}).get("decisionThresh"),
+            )
+        except Exception as exc:                      # noqa: BLE001
+            result["receipt"] = None
+            result["receiptError"] = "%s: %s" % (type(exc).__name__, exc)
+
+        return result
     finally:
         # The video is deleted as soon as the verdict is produced. Nothing is
         # retained on disk between requests.
@@ -219,6 +342,25 @@ async def analyze(video: UploadFile = File(...)):
             path.unlink(missing_ok=True)
         except OSError:
             pass
+
+
+@app.on_event("startup")
+def _check_signing_key():
+    """Fail loudly at boot on a malformed signing key, not at the first upload.
+
+    A misconfigured key that only surfaces when someone finally analyses a
+    video is a much worse failure than one that appears in the startup log.
+    Analysis itself is never blocked by this: a result with no receipt is still
+    a result, so this warns rather than exits.
+    """
+    try:
+        info = receipt.public_key_info()
+    except ValueError as exc:
+        print("[startup] Receipts DISABLED - %s" % exc, file=sys.stderr)
+        return
+    print("[startup] Receipts signed with key %s%s"
+          % (info["keyId"], " (throwaway)" if info["ephemeral"] else ""),
+          file=sys.stderr)
 
 
 @app.on_event("shutdown")

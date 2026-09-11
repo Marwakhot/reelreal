@@ -160,11 +160,47 @@
   var numberEls = document.querySelectorAll('.stat strong, #rScore, #rBand, #rDur');
   if (numberEls.length && 'MutationObserver' in window) {
     numberEls.forEach(function (el) {
+      /* Set while this file is writing interpolated frames, so the observer
+         ignores its own writes instead of retriggering itself. */
+      var selfWrite = false;
+      var frame = 0;
+
+      /* Count a value up from zero to whatever app.js wrote, keeping the
+         prefix, suffix and decimal places of the final string exactly. The
+         final frame assigns that string verbatim, so the displayed value is
+         always the one app.js produced — this never rounds or reformats it,
+         and a non-numeric value ("—", "Low") is left alone entirely. */
+      function countUp(finalText) {
+        var m = /^(\D*?)(\d+(?:\.\d+)?)(.*)$/.exec(finalText);
+        if (!m) return;
+
+        var prefix = m[1], target = parseFloat(m[2]), suffix = m[3];
+        var dot = m[2].indexOf('.');
+        var places = dot === -1 ? 0 : m[2].length - dot - 1;
+        var start = performance.now();
+        var DURATION = 600;
+
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(function step(now) {
+          var t = Math.min(1, (now - start) / DURATION);
+          // ease-out cubic: fast off the mark, settles gently on the value
+          var eased = 1 - Math.pow(1 - t, 3);
+          selfWrite = true;
+          el.textContent = t < 1
+            ? prefix + (target * eased).toFixed(places) + suffix
+            : finalText;
+          selfWrite = false;
+          if (t < 1) frame = requestAnimationFrame(step);
+        });
+      }
+
       var numMO = new MutationObserver(function () {
+        if (selfWrite) return;
         el.classList.remove('rr-pop');
         // force reflow so the animation can restart if triggered twice in a row
         void el.offsetWidth;
         el.classList.add('rr-pop');
+        countUp(el.textContent);
       });
       numMO.observe(el, { characterData: true, childList: true, subtree: true });
     });
