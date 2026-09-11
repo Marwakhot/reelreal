@@ -83,20 +83,48 @@ def extract_crops(jobs, cache_dir: Path, frames_per_video: int, device: str):
     return crops, labels, clips
 
 
-def _normalise(batch_uint8, processor, device):
+def build_augment():
+    """Downscale-and-restore, then JPEG re-encode. Training crops only.
+
+    Measured need, not a precaution: evaluate_external.py put the clean-crop
+    model at ROC-AUC 0.7929 on FaceForensics++ and 0.6301 once crops were
+    downscaled and recompressed the way a re-uploaded clip is. preprocess.py has
+    carried both transforms since the beginning, with a docstring saying a
+    detector trained only on clean crops learns artifacts that recompression
+    destroys. That is exactly what the 0.63 measured.
+
+    Both apply with p=0.5, so roughly a quarter of crops pass through untouched
+    and the model still sees pristine footage.
+    """
+    from preprocess import RandomDownscale, RandomJPEG
+
+    down = RandomDownscale(scale_range=(0.35, 1.0), p=0.5)
+    jpeg = RandomJPEG(quality_range=(30, 95), p=0.5)
+    return lambda im: jpeg(down(im))
+
+
+def _normalise(batch_uint8, processor, device, augment=None):
     """uint8 HWC crops -> normalised NCHW tensor, using the model's own stats.
 
     The processor is asked for tensors directly rather than re-implementing its
     resize and normalisation, so training crops and inference crops go through
     identical arithmetic. A mismatch here is invisible and ruins the model.
+
+    `augment` runs before the processor and must never be passed on evaluation:
+    degrading held-out crops would measure a different question entirely.
     """
     import torch
+    from PIL import Image
 
-    out = processor(images=list(batch_uint8), return_tensors="pt")
+    images = [Image.fromarray(c) if isinstance(c, np.ndarray) else c
+              for c in batch_uint8]
+    if augment is not None:
+        images = [augment(im) for im in images]
+    out = processor(images=images, return_tensors="pt")
     return out["pixel_values"].to(device)
 
 
-def train(crops, labels, processor, device, epochs, batch_size, lr):
+def train(crops, labels, processor, device, epochs, batch_size, lr, augment=None):
     import torch
     from torch.optim import AdamW
     from transformers import ViTForImageClassification
@@ -104,6 +132,7 @@ def train(crops, labels, processor, device, epochs, batch_size, lr):
     model = ViTForImageClassification.from_pretrained(
         "prithivMLmods/Deep-Fake-Detector-v2-Model").to(device)
     model.train()
+    print("augmentation:", "on" if augment else "OFF")
 
     opt = AdamW(model.parameters(), lr=lr, weight_decay=0.01)
     lossf = torch.nn.CrossEntropyLoss()
@@ -115,7 +144,7 @@ def train(crops, labels, processor, device, epochs, batch_size, lr):
         total, correct, running = 0, 0, 0.0
         for start in range(0, n, batch_size):
             idx = order[start:start + batch_size]
-            x = _normalise(crops[idx], processor, device)
+            x = _normalise(crops[idx], processor, device, augment=augment)
             y = torch.tensor(labels[idx], device=device)
 
             logits = model(pixel_values=x).logits
@@ -170,6 +199,8 @@ def main() -> None:
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--lr", type=float, default=2e-5)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--no-augment", action="store_true",
+                    help="train on clean crops only (the previous behaviour)")
     args = ap.parse_args()
 
     import torch
@@ -205,7 +236,9 @@ def main() -> None:
           f"held-out crops {len(yho)} ({yho.mean():.2%} fake)")
 
     print("\nfine-tuning:")
-    model = train(xtr, ytr, processor, device, args.epochs, args.batch_size, args.lr)
+    augment = None if args.no_augment else build_augment()
+    model = train(xtr, ytr, processor, device, args.epochs, args.batch_size,
+                  args.lr, augment=augment)
 
     print("\nevaluating at clip level on held-out identities:")
     y_true, y_prob, _names = evaluate_clip_level(
@@ -220,6 +253,7 @@ def main() -> None:
     processor.save_pretrained(ckpt)
     (args.out_dir / "finetune_metrics.json").write_text(
         json.dumps({"holdout_metrics": report,
+                    "augmented": not args.no_augment,
                     "n_train_clips": len(train_jobs),
                     "n_holdout_clips": len(hold_jobs),
                     "n_train_crops": int(len(ytr)),
