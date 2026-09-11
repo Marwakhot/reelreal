@@ -210,13 +210,39 @@
                               's · model ' + result.modelVersion +
                               (result.isMock ? ' · SIMULATED RESULT' : '');
 
-    // Evidence rows: the <b> labels stay as authored, only the findings change.
-    result.artifacts.forEach(function (artifact) {
-      var el = document.getElementById(artifact.id);
-      if (!el) return;
-      el.textContent = artifact.detail;
-      el.className = artifact.severity;   // ok | warn | bad -> coloured by tokens.css
-    });
+    /* "What we measured": every row is a value this analysis produced. Where a
+       measurement is genuinely absent it shows a dash rather than a zero, since
+       "0 of 0 frames" reads as a finding when it means the opposite.
+
+       result.artifacts is deliberately not rendered here. Five of its six rows
+       are signals this model does not measure at all, and a panel of "not
+       checked" placeholders says less than the numbers below. The extension
+       still renders that array, so the backend keeps producing it. */
+    var p = result.pipeline || {};
+    var m = function (id, text) { $('#' + id).textContent = text; };
+    var has = function (v) { return typeof v === 'number' && isFinite(v); };
+
+    m('mFace', has(p.framesSampled) && p.framesSampled > 0
+      ? p.framesScored + ' of ' + p.framesSampled + ' frames (' +
+        Math.round((p.coverage || 0) * 100) + '%)'
+      : '—');
+
+    m('mFlagged', has(p.framesScored) && p.framesScored > 0
+      ? p.framesFlagged + ' of ' + p.framesScored
+      : '—');
+
+    m('mRun', has(p.longestRun) && p.framesFlagged
+      ? p.longestRun + (p.longestRun === 1 ? ' frame' : ' frames in a row')
+      : '—');
+
+    var seg = result.flaggedSegment;
+    m('mSection', seg
+      ? ReelReal.formatClock(seg.startSecond) + ' – ' + ReelReal.formatClock(seg.endSecond)
+      : '—');
+
+    m('mScore', has(p.meanScore) && p.framesScored
+      ? p.meanScore.toFixed(2) + ' average, ' + (p.peakScore || 0).toFixed(2) + ' peak'
+      : '—');
 
     /* Video preview. Results imported from the extension have no playable blob. */
     var video = $('#rVideo');

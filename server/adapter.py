@@ -250,6 +250,11 @@ def to_analysis_result(result: Dict, *, file_name: str, file_size: int,
             "framesScored": int(result.get("n_scored") or 0),
             "framesFlagged": int(result.get("n_flagged") or 0),
             "longestRun": int(result.get("longest_run") or 0),
+            # Per-frame score spread. Measured by clip_features(); the report
+            # shows these so the single clip number is not the only thing on
+            # screen, since one figure hides whether the frames agreed.
+            "meanScore": round(float(result.get("mean") or 0.0), 3),
+            "peakScore": round(float(result.get("max") or 0.0), 3),
             "highThresh": float(result.get("high_thresh") or 0.0),
             "decisionThresh": float(result.get("decision_thresh") or 0.0),
             "headline": result.get("headline"),
