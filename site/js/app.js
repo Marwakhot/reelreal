@@ -169,15 +169,23 @@
       result.provenance.summary
     ].join(' · ');
 
-    $('#rScore').textContent = result.confidence.toFixed(2);
+    /* Shown as a percentage. The underlying value is unchanged — people read
+       "83%" without hesitating and "0.83" with.
 
-    /* No band is produced until clip-level calibration has been fitted. Saying
-       "Uncalibrated" is the honest rendering — a range here would assert an
-       accuracy the model has not been checked for. */
-    var band = result.calibratedBand;
-    $('#rBand').textContent = band
-      ? band.low.toFixed(2) + '–' + band.high.toFixed(2)
-      : 'Uncalibrated';
+       Inconclusive gets a dash, never a number. The model refused to judge, and
+       printing "Likely AI-manipulated: 0%" against that refusal would read as
+       the opposite — a confident all-clear. Same reason the flagged duration
+       below shows a dash rather than "none". */
+    var undecided = result.verdict === 'inconclusive';
+    $('#rScore').textContent = undecided
+      ? '—'
+      : Math.round(result.confidence * 100) + '%';
+
+    /* How far the score sits from the decision threshold, not how accurate the
+       model is. A clip scoring far either side is a clearer call than one
+       sitting on the line; neither says anything about the model's reliability
+       on this kind of footage, which is what the caveat below is for. */
+    $('#rBand').textContent = undecided ? '—' : (result.confidenceLabel || '—');
 
     /* "none" is a finding and must not be shown when the model could not see
        enough of a face to look — that case gets a dash, not a clean answer. */
@@ -188,9 +196,12 @@
       : (typeof manipulated === 'number' ? manipulated.toFixed(1) + ' s' : '—');
 
     var badge = $('#rBadge');
-    badge.textContent = isSynthetic ? 'Likely synthetic'
-      : result.verdict === 'inconclusive' ? 'Insufficient evidence'
-      : 'No manipulation found';
+    /* "No signs of manipulation" rather than anything implying the video is
+       genuine. This model only looks at faces: a real face with a cloned voice,
+       or an edited background, reaches this branch untouched. */
+    badge.textContent = isSynthetic ? 'Likely AI-manipulated'
+      : result.verdict === 'inconclusive' ? 'Not enough face visible to judge'
+      : 'No signs of manipulation';
     /* "clean" is the green treatment. Inconclusive is not a pass, so it keeps
        the neutral/alert styling rather than being coloured like a clean bill. */
     badge.classList.toggle('clean', result.verdict === 'authentic');

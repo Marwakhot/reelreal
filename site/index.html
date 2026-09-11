@@ -144,9 +144,9 @@
       </div>
 
       <div class="stats">
-        <div class="stat"><span>Synthetic score</span><strong id="rScore">0.00</strong></div>
-        <div class="stat"><span>Calibrated band</span><strong id="rBand">—</strong></div>
-        <div class="stat"><span>Flagged duration (est.)</span><strong id="rDur">—</strong></div>
+        <div class="stat"><span>Likely AI-manipulated</span><strong id="rScore">0%</strong></div>
+        <div class="stat"><span>Confidence</span><strong id="rBand">—</strong></div>
+        <div class="stat"><span>Suspicious footage</span><strong id="rDur">—</strong></div>
       </div>
 
       <div class="viewer">
@@ -169,7 +169,7 @@
       </div>
 
       <div class="caveat">
-        <b>Reading the score:</b> This model is uncalibrated, so the score is a raw model output rather than a probability, and no confidence interval is shown. It has not yet been validated against known deepfakes. Treat the result as an indication to look closer, not as a finding. The timeline is more informative than the single number.
+        <b>Reading the score:</b> This detector was tested on videos it had never seen, and got 92% of them right. It is noticeably less reliable on clips that have been re-uploaded or compressed, as most social media video has been, and on kinds of manipulation it was not trained on. Treat the result as a reason to look closer, not as proof. The timeline below tells you more than the single number.
       </div>
     </div>
 

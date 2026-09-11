@@ -32,10 +32,14 @@
      verdict: "synthetic" | "authentic" | "inconclusive",
      confidence: number,               // 0..1, probability the clip is synthetic
 
-     // A 90% interval, or null when no calibration has been fitted — which is
-     // the case today. Null makes the UI print "Uncalibrated" rather than
-     // showing a range the model has not earned. See the calibration note in
-     // server/README.md.
+     // How decisively the clip fell on its side of the decision threshold, as
+     // one word: "High" | "Medium" | "Low". Derived from the pipeline's
+     // decision_margin. It describes this clip's distance from the line, NOT
+     // how accurate the model is on footage of this kind.
+     confidenceLabel: string | null,
+
+     // A 90% interval, or null when no clip calibrator has been fitted — which
+     // is the case today, so the report shows confidenceLabel instead.
      calibratedBand: { low: number, high: number } | null,
 
      manipulatedDurationSeconds: number | null,       // null when underivable
@@ -203,6 +207,7 @@
 
       verdict: isSynthetic ? 'synthetic' : 'authentic',
       confidence: Number(confidence.toFixed(2)),
+      confidenceLabel: isSynthetic ? 'High' : 'Medium',
       calibratedBand: { low: Number(low.toFixed(2)), high: Number(high.toFixed(2)) },
 
       manipulatedDurationSeconds: isSynthetic ? Number((span + 0.2).toFixed(1)) : 0,

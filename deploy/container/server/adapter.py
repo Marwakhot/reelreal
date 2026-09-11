@@ -26,7 +26,7 @@ from typing import Dict, List, Optional
 
 # Shown in any evidence row the current model has no measurement for. Kept as
 # one constant so the UI wording stays consistent and is trivial to grep.
-NOT_MEASURED = "Not measured by this model"
+NOT_MEASURED = "Not checked yet"
 
 # The pipeline's three verdicts -> the frontend's three verdict strings.
 # "INSUFFICIENT EVIDENCE" has no equivalent in the original mock, which only
@@ -148,6 +148,18 @@ def _artifacts(result: Dict) -> List[Dict]:
     ]
 
 
+def _confidence_label(margin: Optional[float]) -> Optional[str]:
+    """decision_margin -> High / Medium / Low. None when it was not computed."""
+    if margin is None:
+        return None
+    m = float(margin)
+    if m >= 0.70:          # config.CONF_STRONG
+        return "High"
+    if m >= 0.35:          # config.CONF_MODERATE
+        return "Medium"
+    return "Low"
+
+
 def _manipulated_seconds(result: Dict) -> Optional[float]:
     """Estimate how much of the clip was flagged, in seconds.
 
@@ -191,10 +203,18 @@ def to_analysis_result(result: Dict, *, file_name: str, file_size: int,
         "verdict": verdict,
         "confidence": round(float(result.get("clip_prob") or 0.0), 4),
 
+        # How decisively the clip fell on its side of the threshold, as one
+        # word. Derived from decision_margin, which the pipeline computes: 0 at
+        # the threshold, 1 at either extreme. Cut points match config.CONF_STRONG
+        # and config.CONF_MODERATE.
+        #
+        # This is NOT a statement about how accurate the model is. A clip can sit
+        # far from the threshold and still be wrong, which is what the caveat on
+        # the report is for.
+        "confidenceLabel": _confidence_label(result.get("decision_margin")),
+
         # No interval is produced. A logistic clip calibrator gives a point
-        # probability, not a 90% band, and clip calibration has not been fitted
-        # at all yet (clip_calibrator is None). Sending null makes the UI print
-        # "Uncalibrated" instead of a made-up range.
+        # probability, not a 90% band, so there is no range to show.
         "calibratedBand": None,
 
         "manipulatedDurationSeconds": _manipulated_seconds(result),
