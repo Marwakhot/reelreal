@@ -32,10 +32,14 @@
      verdict: "synthetic" | "authentic" | "inconclusive",
      confidence: number,               // 0..1, probability the clip is synthetic
 
-     // A 90% interval, or null when no calibration has been fitted — which is
-     // the case today. Null makes the UI print "Uncalibrated" rather than
-     // showing a range the model has not earned. See the calibration note in
-     // server/README.md.
+     // How decisively the clip fell on its side of the decision threshold, as
+     // one word: "High" | "Medium" | "Low". Derived from the pipeline's
+     // decision_margin. It describes this clip's distance from the line, NOT
+     // how accurate the model is on footage of this kind.
+     confidenceLabel: string | null,
+
+     // A 90% interval, or null when no clip calibrator has been fitted — which
+     // is the case today, so the report shows confidenceLabel instead.
      calibratedBand: { low: number, high: number } | null,
 
      manipulatedDurationSeconds: number | null,       // null when underivable
@@ -179,19 +183,19 @@
     var high = Math.min(0.99, confidence + 0.04 + rnd() * 0.02);
 
     var artifacts = isSynthetic ? [
-      { id: 'e1', label: 'Face boundary blending', detail: 'Soft seam along jawline', severity: 'bad' },
-      { id: 'e2', label: 'Blink rate & frequency', detail: '2 blinks in ' + duration + ' s — unnatural', severity: 'warn' },
-      { id: 'e3', label: 'Temporal flicker', detail: 'Texture reset at ' + (start + 0.1).toFixed(1) + ' s', severity: 'bad' },
-      { id: 'e4', label: 'Compression trace', detail: 'Double-encoded region, ' + formatClock(start) + '–' + formatClock(start + span), severity: 'warn' },
-      { id: 'e5', label: 'Lip-sync alignment', detail: 'Consistent', severity: 'ok' },
-      { id: 'e6', label: 'C2PA Provenance', detail: 'Unsigned', severity: 'bad' }
+      { id: 'e1', label: 'Face edges', detail: 'Soft seam along jawline', severity: 'bad' },
+      { id: 'e2', label: 'Blinking pattern', detail: '2 blinks in ' + duration + ' s — unnatural', severity: 'warn' },
+      { id: 'e3', label: 'Frame-to-frame flicker', detail: 'Texture reset at ' + (start + 0.1).toFixed(1) + ' s', severity: 'bad' },
+      { id: 'e4', label: 'Compression history', detail: 'Double-encoded region, ' + formatClock(start) + '–' + formatClock(start + span), severity: 'warn' },
+      { id: 'e5', label: 'Lip sync', detail: 'Consistent', severity: 'ok' },
+      { id: 'e6', label: 'Digital signature', detail: 'Unsigned', severity: 'bad' }
     ] : [
-      { id: 'e1', label: 'Face boundary blending', detail: 'No blending detected', severity: 'ok' },
-      { id: 'e2', label: 'Blink rate & frequency', detail: '9 blinks in ' + duration + ' s — typical', severity: 'ok' },
-      { id: 'e3', label: 'Temporal flicker', detail: 'Stable across all frames', severity: 'ok' },
-      { id: 'e4', label: 'Compression trace', detail: 'Single encode, sensor noise intact', severity: 'ok' },
-      { id: 'e5', label: 'Lip-sync alignment', detail: 'Consistent', severity: 'ok' },
-      { id: 'e6', label: 'C2PA Provenance', detail: 'Signed by capture device', severity: 'ok' }
+      { id: 'e1', label: 'Face edges', detail: 'No blending detected', severity: 'ok' },
+      { id: 'e2', label: 'Blinking pattern', detail: '9 blinks in ' + duration + ' s — typical', severity: 'ok' },
+      { id: 'e3', label: 'Frame-to-frame flicker', detail: 'Stable across all frames', severity: 'ok' },
+      { id: 'e4', label: 'Compression history', detail: 'Single encode, sensor noise intact', severity: 'ok' },
+      { id: 'e5', label: 'Lip sync', detail: 'Consistent', severity: 'ok' },
+      { id: 'e6', label: 'Digital signature', detail: 'Signed by capture device', severity: 'ok' }
     ];
 
     return {
@@ -203,6 +207,7 @@
 
       verdict: isSynthetic ? 'synthetic' : 'authentic',
       confidence: Number(confidence.toFixed(2)),
+      confidenceLabel: isSynthetic ? 'High' : 'Medium',
       calibratedBand: { low: Number(low.toFixed(2)), high: Number(high.toFixed(2)) },
 
       manipulatedDurationSeconds: isSynthetic ? Number((span + 0.2).toFixed(1)) : 0,

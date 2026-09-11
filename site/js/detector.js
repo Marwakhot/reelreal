@@ -183,19 +183,19 @@
     var high = Math.min(0.99, confidence + 0.04 + rnd() * 0.02);
 
     var artifacts = isSynthetic ? [
-      { id: 'e1', label: 'Face boundary blending', detail: 'Soft seam along jawline', severity: 'bad' },
-      { id: 'e2', label: 'Blink rate & frequency', detail: '2 blinks in ' + duration + ' s — unnatural', severity: 'warn' },
-      { id: 'e3', label: 'Temporal flicker', detail: 'Texture reset at ' + (start + 0.1).toFixed(1) + ' s', severity: 'bad' },
-      { id: 'e4', label: 'Compression trace', detail: 'Double-encoded region, ' + formatClock(start) + '–' + formatClock(start + span), severity: 'warn' },
-      { id: 'e5', label: 'Lip-sync alignment', detail: 'Consistent', severity: 'ok' },
-      { id: 'e6', label: 'C2PA Provenance', detail: 'Unsigned', severity: 'bad' }
+      { id: 'e1', label: 'Face edges', detail: 'Soft seam along jawline', severity: 'bad' },
+      { id: 'e2', label: 'Blinking pattern', detail: '2 blinks in ' + duration + ' s — unnatural', severity: 'warn' },
+      { id: 'e3', label: 'Frame-to-frame flicker', detail: 'Texture reset at ' + (start + 0.1).toFixed(1) + ' s', severity: 'bad' },
+      { id: 'e4', label: 'Compression history', detail: 'Double-encoded region, ' + formatClock(start) + '–' + formatClock(start + span), severity: 'warn' },
+      { id: 'e5', label: 'Lip sync', detail: 'Consistent', severity: 'ok' },
+      { id: 'e6', label: 'Digital signature', detail: 'Unsigned', severity: 'bad' }
     ] : [
-      { id: 'e1', label: 'Face boundary blending', detail: 'No blending detected', severity: 'ok' },
-      { id: 'e2', label: 'Blink rate & frequency', detail: '9 blinks in ' + duration + ' s — typical', severity: 'ok' },
-      { id: 'e3', label: 'Temporal flicker', detail: 'Stable across all frames', severity: 'ok' },
-      { id: 'e4', label: 'Compression trace', detail: 'Single encode, sensor noise intact', severity: 'ok' },
-      { id: 'e5', label: 'Lip-sync alignment', detail: 'Consistent', severity: 'ok' },
-      { id: 'e6', label: 'C2PA Provenance', detail: 'Signed by capture device', severity: 'ok' }
+      { id: 'e1', label: 'Face edges', detail: 'No blending detected', severity: 'ok' },
+      { id: 'e2', label: 'Blinking pattern', detail: '9 blinks in ' + duration + ' s — typical', severity: 'ok' },
+      { id: 'e3', label: 'Frame-to-frame flicker', detail: 'Stable across all frames', severity: 'ok' },
+      { id: 'e4', label: 'Compression history', detail: 'Single encode, sensor noise intact', severity: 'ok' },
+      { id: 'e5', label: 'Lip sync', detail: 'Consistent', severity: 'ok' },
+      { id: 'e6', label: 'Digital signature', detail: 'Signed by capture device', severity: 'ok' }
     ];
 
     return {

@@ -122,28 +122,30 @@ def _artifacts(result: Dict) -> List[Dict]:
     # manipulation; scattered single frames look like noise. Same test the
     # pipeline's own evidence.consistency_sentence() applies.
     if n_scored == 0 or n_flagged == 0:
-        e3 = {"detail": "No frames flagged", "severity": "ok"}
+        e3 = {"detail": "Nothing unusual", "severity": "ok"}
     elif longest_run >= max(3, int(0.5 * n_flagged)):
         e3 = {
-            "detail": "Sustained — %d consecutive flagged frames" % longest_run,
+            "detail": "%d suspicious frames in a row" % longest_run,
             "severity": "bad",
         }
     else:
         e3 = {
-            "detail": "Scattered, not sustained (longest run: %d)" % longest_run,
+            "detail": "Scattered, never more than %d in a row" % longest_run,
             "severity": "warn",
         }
 
+    # Labels match the row headings authored in site/index.html. app.js writes
+    # only the detail, so these are for the extension and any other consumer.
     return [
-        {"id": "e1", "label": "Face boundary blending", **e1},
-        {"id": "e2", "label": "Blink rate & frequency",
+        {"id": "e1", "label": "Face edges", **e1},
+        {"id": "e2", "label": "Blinking pattern",
          "detail": NOT_MEASURED, "severity": "na"},
-        {"id": "e3", "label": "Temporal flicker", **e3},
-        {"id": "e4", "label": "Compression trace",
+        {"id": "e3", "label": "Frame-to-frame flicker", **e3},
+        {"id": "e4", "label": "Compression history",
          "detail": NOT_MEASURED, "severity": "na"},
-        {"id": "e5", "label": "Lip-sync alignment",
+        {"id": "e5", "label": "Lip sync",
          "detail": NOT_MEASURED, "severity": "na"},
-        {"id": "e6", "label": "C2PA Provenance",
+        {"id": "e6", "label": "Digital signature",
          "detail": NOT_MEASURED, "severity": "na"},
     ]
 
