@@ -66,15 +66,15 @@
      Adds .scanning to #drop while the analysis bar is active (has class .on),
      so the green/orange sweep plays only during real analysis.
      ---------------------------------------------------------------------- */
-  var drop  = document.getElementById('drop');
-  var bar   = document.getElementById('bar');
+  var sPreview = document.getElementById('sPreview');
+  var bar      = document.getElementById('bar');
 
-  if (drop && bar) {
+  if (sPreview && bar) {
     var scanObserver = new MutationObserver(function () {
       if (bar.classList.contains('on')) {
-        drop.classList.add('scanning');
+        sPreview.classList.add('scanning');
       } else {
-        drop.classList.remove('scanning');
+        sPreview.classList.remove('scanning');
       }
     });
     scanObserver.observe(bar, { attributes: true, attributeFilter: ['class'] });

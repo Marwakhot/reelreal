@@ -60,7 +60,7 @@
   pointer-events: none;
   box-shadow: 0 0 8px var(--accent-orange);
 }
-.drop.scanning .scan-line {
+.staged-preview.scanning .scan-line {
   display: block;
   animation: scan-sweep 1.8s ease-in-out infinite;
 }

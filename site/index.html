@@ -121,8 +121,6 @@
     </div>
 
     <div class="drop" id="drop">
-      <!-- Forensic scan line overlay -->
-      <div class="scan-line" id="scanLine"></div>
       <h3>Drop a clip here, or choose from device</h3>
       <p>Your video is sent to the analysis server and deleted as soon as the result is returned. You get a verdict and a timeline of which moments were flagged.</p>
       <button class="btn" id="pick">Select Video File</button>
@@ -153,6 +151,8 @@
            committing to a 35-second analysis. Muted: an autoplaying preview that
            makes noise is hostile. -->
       <div class="staged-preview" id="sPreview">
+        <!-- Forensic scan line sweeps the video while analysis runs -->
+        <div class="scan-line" id="scanLine"></div>
         <video id="sVideo" muted playsinline controls preload="metadata"></video>
       </div>
 
@@ -172,7 +172,7 @@
     <!-- Only shown when a result arrives from the Chrome extension. -->
     <div class="handoff-note" id="handoffNote"></div>
 
-    <div class="glass-panel">
+    <div class="brutalist-panel">
       <div class="verdict">
         <div class="file">
           <h3 id="rName">—</h3>
