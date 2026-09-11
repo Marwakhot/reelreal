@@ -43,6 +43,50 @@ def split_identities(jobs, holdout_frac: float, seed: int):
     return [jobs[i] for i in tr], [jobs[i] for i in ho]
 
 
+# The arguments main() below defaults to. Anything reproducing the split of the
+# checkpoint that was actually trained has to pass these exact values, so they
+# live here as names rather than being retyped as literals at each call site.
+FINETUNE_PER_CLASS = 300
+FINETUNE_HOLDOUT_FRAC = 0.3
+FINETUNE_SEED = 42
+
+
+def finetune_split(root, per_class: int = FINETUNE_PER_CLASS,
+                   holdout_frac: float = FINETUNE_HOLDOUT_FRAC,
+                   seed: int = FINETUNE_SEED):
+    """-> (train_jobs, holdout_jobs), reproducing the split a fine-tune used.
+
+    THE ONE DEFINITION of "which identities has this checkpoint already seen".
+    The split is a pure function of (root, per_class, holdout_frac, seed) --
+    `collect` shuffles with `random.Random(seed)` and StratifiedGroupKFold takes
+    the seed as `random_state` -- so the identities a past run trained on can be
+    recovered exactly, without the run having written them down.
+
+    That recovery is what every downstream measurement needs. A calibrator
+    fitted on clips whose faces the model memorised learns the mapping for
+    over-confident scores that unseen faces never produce, and a Grad-CAM table
+    built on them describes memorisation rather than detection. Both would look
+    healthy and both would be wrong, which is why this is shared rather than
+    re-derived per script.
+
+    Pass the same arguments the fine-tune used or the reproduction is silently
+    of a different split; the module defaults match `main()` below.
+    """
+    jobs = collect(Path(root), per_class, seed)
+    train_jobs, hold_jobs = split_identities(jobs, holdout_frac, seed)
+    overlap = {j[2] for j in train_jobs} & {j[2] for j in hold_jobs}
+    assert not overlap, f"identity leak across the split: {overlap}"
+    return train_jobs, hold_jobs
+
+
+def finetune_train_identities(root, per_class: int = FINETUNE_PER_CLASS,
+                              holdout_frac: float = FINETUNE_HOLDOUT_FRAC,
+                              seed: int = FINETUNE_SEED) -> set:
+    """-> the set of group ids a fine-tune trained on, to exclude downstream."""
+    train_jobs, _ = finetune_split(root, per_class, holdout_frac, seed)
+    return {j[2] for j in train_jobs}
+
+
 def extract_crops(jobs, cache_dir: Path, frames_per_video: int, device: str):
     """-> (crops as uint8 HWC arrays, labels, clip ids). Cached as one .npz."""
     import video_io
@@ -192,13 +236,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True, type=Path)
     ap.add_argument("--out-dir", default=Path("reports"), type=Path)
-    ap.add_argument("--per-class", type=int, default=300)
+    ap.add_argument("--per-class", type=int, default=FINETUNE_PER_CLASS)
     ap.add_argument("--frames-per-video", type=int, default=6)
-    ap.add_argument("--holdout-frac", type=float, default=0.3)
+    ap.add_argument("--holdout-frac", type=float, default=FINETUNE_HOLDOUT_FRAC)
     ap.add_argument("--epochs", type=int, default=2)
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--lr", type=float, default=2e-5)
-    ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--seed", type=int, default=FINETUNE_SEED)
     ap.add_argument("--no-augment", action="store_true",
                     help="train on clean crops only (the previous behaviour)")
     args = ap.parse_args()
@@ -213,13 +257,15 @@ def main() -> None:
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    jobs = collect(args.root, args.per_class, args.seed)
-    train_jobs, hold_jobs = split_identities(jobs, args.holdout_frac, args.seed)
-    print(f"{len(jobs)} clips: {len(train_jobs)} train / {len(hold_jobs)} held out")
+    # Through finetune_split rather than collect + split_identities inline, so
+    # the split this run trains on and the split other scripts reconstruct to
+    # exclude it are produced by the same function and cannot drift apart.
+    train_jobs, hold_jobs = finetune_split(
+        args.root, args.per_class, args.holdout_frac, args.seed)
+    print(f"{len(train_jobs) + len(hold_jobs)} clips: {len(train_jobs)} train / "
+          f"{len(hold_jobs)} held out")
     print(f"identities: {len({j[2] for j in train_jobs})} train / "
           f"{len({j[2] for j in hold_jobs})} held out")
-    overlap = {j[2] for j in train_jobs} & {j[2] for j in hold_jobs}
-    assert not overlap, f"identity leak across the split: {overlap}"
 
     processor = ViTImageProcessor.from_pretrained(
         "prithivMLmods/Deep-Fake-Detector-v2-Model")

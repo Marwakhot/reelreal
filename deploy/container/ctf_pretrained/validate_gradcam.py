@@ -84,19 +84,16 @@ def install_checkpoint(src: Path) -> Path:
 def held_out_clips(root: Path, per_class: int, holdout_frac: float, seed: int):
     """The same held-out identities finetune_clips.py evaluated on.
 
-    collect() and split_identities() are imported rather than reimplemented,
-    and the defaults below match finetune_clips.py's, so identical arguments
-    reproduce an identical split. Measuring attention on clips the model
+    finetune_clips.finetune_split() is the single definition of that split, so
+    this asks it rather than rebuilding the collect + split_identities sequence
+    and risking the two drifting apart. Measuring attention on clips the model
     trained on would describe memorisation, not detection.
     """
-    from evaluate_clips import collect
-    from finetune_clips import split_identities
+    from finetune_clips import finetune_split
 
-    jobs = collect(root, per_class, seed)
-    train_jobs, hold_jobs = split_identities(jobs, holdout_frac, seed)
-    overlap = {j[2] for j in train_jobs} & {j[2] for j in hold_jobs}
-    assert not overlap, f"identity leak across the split: {overlap}"
-    print(f"{len(jobs)} clips -> {len(train_jobs)} train / {len(hold_jobs)} held out "
+    train_jobs, hold_jobs = finetune_split(root, per_class, holdout_frac, seed)
+    print(f"{len(train_jobs) + len(hold_jobs)} clips -> {len(train_jobs)} train / "
+          f"{len(hold_jobs)} held out "
           f"({len({j[2] for j in hold_jobs})} held-out identities)")
     return [(Path(p), int(label)) for p, label, _ in hold_jobs]
 
@@ -297,6 +294,9 @@ def recommend(s: dict, sweep_table: dict) -> str:
 
 
 def main() -> None:
+    sys.path.insert(0, str(HERE))
+    import finetune_clips
+
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group(required=True)
@@ -309,10 +309,13 @@ def main() -> None:
                     help="fine-tuned weights; copied next to infer_pipeline.py, "
                          "which is where VideoAnalyzer.load() looks")
     ap.add_argument("--out-dir", default=Path("reports"), type=Path)
-    # These four match finetune_clips.py, so the split reproduces exactly.
-    ap.add_argument("--per-class", type=int, default=300)
-    ap.add_argument("--holdout-frac", type=float, default=0.3)
-    ap.add_argument("--seed", type=int, default=42)
+    # Taken from finetune_clips.py rather than retyped, so the split reproduces
+    # exactly and cannot drift if that script's defaults ever change.
+    ap.add_argument("--per-class", type=int,
+                    default=finetune_clips.FINETUNE_PER_CLASS)
+    ap.add_argument("--holdout-frac", type=float,
+                    default=finetune_clips.FINETUNE_HOLDOUT_FRAC)
+    ap.add_argument("--seed", type=int, default=finetune_clips.FINETUNE_SEED)
     ap.add_argument("--limit", type=int, default=0,
                     help="score at most this many held-out clips (0 = all)")
     ap.add_argument("--n-frames", type=int, default=None)
@@ -323,7 +326,6 @@ def main() -> None:
                     help="proceed on the off-the-shelf checkpoint anyway")
     args = ap.parse_args()
 
-    sys.path.insert(0, str(HERE))
     if args.checkpoint:
         install_checkpoint(args.checkpoint)
 

@@ -440,13 +440,18 @@ Calibration has never been run, so `clip_calibrator` is `None`. Consequences:
 
 ### How to fix it: `evaluate_clips.py`
 
-`fit_clip_calibration.py` assumes the *trained* pipeline — a `model_best.pt`
-checkpoint and `splits.json`. This project has neither; it scores whole videos
-with a pretrained ViT. `ctf_pretrained/evaluate_clips.py` is the same procedure
-for that setup:
+**`fit_clip_calibration.py` does not run at all — do not reach for it.** It dies
+at import on `from model import update_checkpoint` (line 51); `model.py` defines
+no such function, and never has. `smoke_test.py:254` imports the same missing
+names. Even repaired it would be the wrong tool: it assumes the *trained*
+pipeline, a `model_best.pt` checkpoint and a `splits.json`, and this project has
+neither — it scores whole videos with a pretrained ViT.
+`ctf_pretrained/evaluate_clips.py` is the same procedure for the setup that
+actually exists:
 
 ```bash
-python evaluate_clips.py --root /content/celeb-df --out-dir reports --per-class 150
+python evaluate_clips.py --root /content/celeb-df --out-dir reports \
+    --per-class 600 --seed 42 --exclude-finetune-identities
 ```
 
 It scans Celeb-DF folders, scores every clip (caching per-frame probabilities so
@@ -458,6 +463,40 @@ diagram on held-out identities the calibrator never saw.
 Splitting by identity matters. Celeb-DF names clips `id{N}_...`, and a clip-level
 split puts the same face in both halves — the model then recognises the person
 rather than the manipulation, and every metric is inflated.
+
+**`--exclude-finetune-identities` is not optional here, and it is new.** Splitting
+by identity protects the calibrator from *its own* split; it does nothing about
+the fine-tune that came first. The deployed ViT was trained on roughly 70% of
+Celeb-DF's identities, and without this flag `evaluate_clips.py` would happily
+fit a calibrator on those same faces.
+
+That is worse than an inflated metric. A calibrator maps a model score onto a
+probability, and the mapping is only correct for the score distribution it was
+fitted on. Scores on memorised faces sit further from the decision boundary and
+are more confident than anything an unseen face produces, so the fitted mapping
+is wrong for the only case that matters in deployment — and the resulting file
+passes every guard, loads cleanly, and makes the interface report itself as
+calibrated. `finetune_clips.finetune_split()` is the single definition of which
+identities the checkpoint has seen; the flag reconstructs that split
+deterministically from `(root, per-class, holdout-frac, seed)` and drops them.
+Pass `--finetune-per-class` / `--finetune-holdout-frac` / `--finetune-seed` if
+the checkpoint was trained with anything other than the 300 / 0.3 / 42 defaults,
+because a mismatch silently reconstructs a *different* split and excludes the
+wrong faces.
+
+`--per-class 600` is deliberate. `collect()` shuffles with `random.Random(seed)`
+and then truncates, so a larger cap with the same seed yields a strict superset —
+more clips than the fine-tune ever selected, of which the identity filter keeps
+only the unseen ones. Leave `--n-frames` alone: it defaults to
+`config.N_SAMPLE_FRAMES`, which is what the deployed pipeline uses, and the
+calibrator's features (`frac_flagged`, `std`, `longest_run_frac`) all depend on
+the frame count. Calibrating at 16 frames and serving at 30 fits the mapping to a
+distribution production never produces.
+
+The written `clip_calibration.json` records `excluded_finetune_identities` and
+`n_frames`, because those are the two facts that cannot be recovered by looking
+at a deployed calibrator, and two files with near-identical coefficients mean
+entirely different things depending on them.
 
 Drop the resulting `clip_calibration.json` next to `infer_pipeline.py` and
 `VideoAnalyzer.load()` picks it up automatically; no code change is needed to
@@ -473,10 +512,14 @@ calibration, so it fails loudly instead.
 
 Until a calibrator is fitted, treat the number as a *ranking*, not a probability.
 
-Fixing it needs, on the model side: a trained checkpoint (`model_best.pt`), then
-`fit_clip_calibration.py --splits splits.json`, then loading that checkpoint in
-`VideoAnalyzer.load` instead of the hard-coded `dummy_ckpt`. It needs the
-FF++ / Celeb-DF datasets and Colab.
+### A note on `colab_pipeline.ipynb`
+
+The notebook still documents the **superseded** pipeline — `plan_splits.py`,
+`train.py`, `evaluate.py`, `fit_clip_calibration.py` — not the
+`finetune_clips.py` / `evaluate_clips.py` path that produced the deployed
+checkpoint. Anyone opening it today is following the wrong map, and its
+calibration cell (§13) invokes the script that cannot import. Read this section
+rather than the notebook until it is rewritten.
 
 ---
 

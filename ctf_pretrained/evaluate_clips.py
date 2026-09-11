@@ -88,6 +88,54 @@ def collect(root: Path, per_class: int, seed: int):
     return jobs
 
 
+def drop_finetune_identities(jobs, root, per_class: int, holdout_frac: float,
+                             seed: int):
+    """-> jobs with every identity the fine-tune trained on removed.
+
+    Calibration turns a model score into a probability, and the mapping is only
+    correct for the score distribution it was fitted on. Scores on faces the
+    model memorised during fine-tuning sit further from the decision boundary
+    and are more confident than anything an unseen face produces, so a
+    calibrator fitted on them is mis-specified for the only case that matters
+    in deployment. The held-out metrics are inflated too, but that is the lesser
+    problem: a wrong number can be re-measured, whereas this ships a file that
+    the loader accepts, reports is_calibrated true for, and prints a confident
+    band from.
+
+    Filtering is by IDENTITY rather than by clip. A different clip of a face the
+    model trained on is still that face, and Celeb-DF's whole point is that the
+    same person appears many times.
+    """
+    import finetune_clips
+
+    train_ids = finetune_clips.finetune_train_identities(
+        root, per_class, holdout_frac, seed)
+    kept = [j for j in jobs if j[2] not in train_ids]
+
+    dropped = len(jobs) - len(kept)
+    dropped_ids = {j[2] for j in jobs} & train_ids
+    print(f"\nexcluding {len(train_ids)} identities the fine-tune trained on "
+          f"(per-class {per_class}, holdout {holdout_frac}, seed {seed})")
+    print(f"  dropped {dropped} of {len(jobs)} clips "
+          f"across {len(dropped_ids)} identities")
+    print(f"  kept    {len(kept)} clips "
+          f"({sum(1 for j in kept if j[1] == 1)} fake, "
+          f"{sum(1 for j in kept if j[1] == 0)} real) "
+          f"over {len({j[2] for j in kept})} unseen identities")
+
+    if not kept:
+        raise SystemExit(
+            "Every clip belongs to an identity the fine-tune trained on, so "
+            "there is nothing left to calibrate against. Raise --per-class "
+            "above --finetune-per-class, or check that the --finetune-* "
+            "arguments match the run that produced the checkpoint.")
+    if len(set(j[1] for j in kept)) < 2:
+        raise SystemExit(
+            "Only one class survives the identity filter. A calibrator needs "
+            "both, and the metrics would be meaningless. Raise --per-class.")
+    return kept
+
+
 def score_clips(jobs, cache_path: Path, n_frames: int):
     """Run the pipeline over every clip, caching per-frame probabilities.
 
@@ -213,6 +261,11 @@ def sweep_high_thresh(calib, grid):
 
 
 def main() -> None:
+    # Imported here, not at module scope: finetune_clips imports collect and
+    # split_by_identity from this module, so a top-level import back would be a
+    # cycle. Only the argparse defaults and drop_finetune_identities need it.
+    import finetune_clips
+
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", required=True, type=Path,
                     help="folder holding Celeb-real / YouTube-real / Celeb-synthesis")
@@ -220,8 +273,25 @@ def main() -> None:
     ap.add_argument("--per-class", type=int, default=150,
                     help="cap on clips per class (default 150)")
     ap.add_argument("--holdout-frac", type=float, default=0.3)
-    ap.add_argument("--n-frames", type=int, default=None)
+    ap.add_argument("--n-frames", type=int, default=None,
+                    help="frames sampled per clip; leave unset to use "
+                         "config.N_SAMPLE_FRAMES, which is what the deployed "
+                         "pipeline uses. Lowering it to save time refits the "
+                         "calibrator to a frame count production never sees.")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--exclude-finetune-identities", action="store_true",
+                    help="drop every clip whose identity the fine-tune trained "
+                         "on. Required for an honest calibrator whenever the "
+                         "checkpoint being scored was fine-tuned on this root.")
+    ap.add_argument("--finetune-per-class", type=int,
+                    default=finetune_clips.FINETUNE_PER_CLASS,
+                    help="--per-class the fine-tune used, to reproduce its split")
+    ap.add_argument("--finetune-holdout-frac", type=float,
+                    default=finetune_clips.FINETUNE_HOLDOUT_FRAC,
+                    help="--holdout-frac the fine-tune used")
+    ap.add_argument("--finetune-seed", type=int,
+                    default=finetune_clips.FINETUNE_SEED,
+                    help="--seed the fine-tune used")
     args = ap.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -230,6 +300,19 @@ def main() -> None:
     print(f"{len(jobs)} clips selected "
           f"({sum(1 for j in jobs if j[1] == 1)} fake, "
           f"{sum(1 for j in jobs if j[1] == 0)} real)")
+
+    if args.exclude_finetune_identities:
+        jobs = drop_finetune_identities(
+            jobs, args.root, args.finetune_per_class,
+            args.finetune_holdout_frac, args.finetune_seed)
+    else:
+        # Not a warning that can be silenced by ignoring it: the resulting file
+        # deploys with is_calibrated true and a confident band, and nothing
+        # downstream can tell it was fitted on memorised faces.
+        print("\nNOTE: --exclude-finetune-identities was not passed. If the "
+              "checkpoint being scored was fine-tuned on clips under this "
+              "root, the calibrator is being fitted on faces it memorised and "
+              "the held-out metrics below are inflated.")
 
     records = score_clips(jobs, args.out_dir / "frame_probs_cache.json",
                           args.n_frames)
@@ -277,6 +360,12 @@ def main() -> None:
         "n_holdout_clips": len(heldout),
         "n_calib_identities": len({r["group"] for r in calib}),
         "n_holdout_identities": len({r["group"] for r in heldout}),
+        # Recorded in the file itself, because this is the one fact that cannot
+        # be recovered from a deployed calibrator by looking at it. Two files
+        # with identical coefficients and similar metrics mean entirely
+        # different things depending on this flag.
+        "excluded_finetune_identities": bool(args.exclude_finetune_identities),
+        "n_frames": args.n_frames,
         "holdout_metrics": report,
     }
     (args.out_dir / "clip_calibration.json").write_text(
