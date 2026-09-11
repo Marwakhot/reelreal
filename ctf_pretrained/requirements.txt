@@ -18,6 +18,15 @@
 torch>=2.1
 torchvision>=0.16
 
+# Pinned to match deploy/container/requirements.txt. This file used to leave
+# transformers unpinned while the container pinned it, so Colab floated to
+# whatever was current and the two environments ran different code. A newer
+# transformers moved ViT's internals and broke gradcam.vit_target_layer on
+# every clip of a sweep, while the deployed container -- pinned -- was fine.
+# Research and production disagreeing about a library is the same class of
+# drift as them disagreeing about a source file.
+transformers==4.44.2
+
 opencv-python-headless==4.10.0.84
 scikit-learn==1.5.2
 pandas==2.2.2

@@ -158,8 +158,39 @@ def vit_target_layer(model: torch.nn.Module) -> torch.nn.Module:
     normalised input to that block still carries per-patch structure while
     sitting late enough to be semantic. This is the layer the reference
     Grad-CAM-for-transformers implementations target.
+
+    RESOLVED BY SEARCH, NOT BY A FIXED PATH. `model.vit.encoder.layer[-1]` is
+    the layout transformers 4.44 uses and the deployed container pins, but that
+    path is library internals rather than public API and it has moved between
+    versions: on a newer transformers this raised
+    `'ViTModel' object has no attribute 'encoder'` for every clip in a 120-clip
+    run, and because _explain() catches broadly the whole sweep degraded to
+    "no map" instead of failing loudly on the first clip.
+
+    The documented path is still tried first, so nothing changes for the pinned
+    version actually serving traffic. The fallback walks named_modules() for the
+    last module named `layernorm_before`, which does not care how the tree above
+    it is arranged. If neither finds anything the error names what was searched,
+    because a silent wrong layer would produce a plausible-looking attention map
+    explaining the wrong thing -- worse than no map at all.
     """
-    return model.vit.encoder.layer[-1].layernorm_before
+    try:
+        return model.vit.encoder.layer[-1].layernorm_before
+    except AttributeError:
+        pass
+
+    candidates = [mod for name, mod in model.named_modules()
+                  if name.rsplit(".", 1)[-1] == "layernorm_before"]
+    if candidates:
+        return candidates[-1]
+
+    raise AttributeError(
+        "Cannot locate the ViT block to hook for Grad-CAM. Tried "
+        "model.vit.encoder.layer[-1].layernorm_before and a search for any "
+        "module named 'layernorm_before'; neither exists on a "
+        f"{type(model).__name__}. This usually means the installed transformers "
+        "version restructured ViT internals -- the deployed container pins "
+        "transformers==4.44.2, so match that.")
 
 
 def region_report(cam: np.ndarray, landmarks: np.ndarray,
