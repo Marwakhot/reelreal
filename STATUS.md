@@ -218,6 +218,55 @@ What would actually address the compression drop is training on more than one
 manipulation family — FF++ clips in the training set alongside Celeb-DF — rather
 than degrading a single family harder. That is untested here.
 
+### Self-generated fakes — the harness is ready, the set is not
+
+The grading rubric asks for a dataset combining public real samples with fakes
+generated for this project. Agreed target: **30 fake + 30 real matched pairs**.
+
+The evaluation side is in place. `data_sources.scan_flat` reads a layout with no
+conventions to decode, which is what a self-made set needs:
+
+```
+<root>/real/alice_01.mp4      genuine footage
+<root>/fake/alice_01.mp4      the fake generated from it
+```
+
+The label comes from the folder and nothing else is inferred. Grouping is by
+file stem, so naming a fake after the clip it was generated from ties the pair
+together and the scan prints how many pairs it actually matched — a naming slip
+shows up as a number rather than passing silently. A directory holding only one
+class is refused, because ROC-AUC is undefined there and accuracy is just the
+majority rate. Run it the same way as any other dataset:
+
+```bash
+python evaluate_external.py --checkpoint reports/vit_finetuned \
+    --dataset flat --root <your-set> --out-dir reports
+```
+
+**What is still missing is the footage.** No fakes have been generated yet, so
+this has produced no numbers and none should be quoted.
+
+**Read the result carefully when it exists.** At 30 per class the Hanley–McNeil
+standard error on ROC-AUC is about **0.058** — the `+/- SE` column
+`evaluate_external.py` now prints beside every figure, with a note whenever a
+class falls below 50 clips. Two degradation conditions differing by 0.05 on a
+set this size have not been shown to differ at all. 30 + 30 is a legitimate set
+to report; it is not a set to report to four decimal places with nothing beside
+it.
+
+Two further cautions specific to a self-generated set:
+
+- **It measures one generator, not "deepfakes".** Whatever tool produces these
+  fakes becomes a fifth manipulation family alongside Celeb-DF's one and FF++'s
+  four, and the result describes that tool. The FF++ numbers already show how
+  far this model moves between families — 0.9814 in-dataset against 0.7929 on
+  unseen ones.
+- **The 0.50 threshold is inherited from Celeb-DF and will not transfer.** On
+  FF++ it costs most of the recall (0.2696 at the same threshold that scores
+  0.9121 in-dataset). Report ROC-AUC, which is threshold-free, and treat any
+  accuracy figure on a new family as a statement about the threshold rather
+  than about the model.
+
 ### What may and may not be claimed
 
 0.9814 is **in-dataset**: trained on Celeb-DF, tested on held-out Celeb-DF
@@ -264,7 +313,20 @@ than tuned to a backbone's feature-map resolution. The cut is 1.5×.
 
 ### What it measures on real footage
 
-Six Celeb-DF clips, one crop each, off-the-shelf checkpoint:
+Six Celeb-DF clips, one crop each, on the **fine-tuned checkpoint that is
+actually deployed**. Produced by `validate_gradcam.py`.
+
+| Clip | eyes | nose/cheeks | mouth/jaw | disc mass | verdict | mean |
+|---|---|---|---|---|---|---|
+| id3_0006 | 0.25× | 0.10× | 0.23× | 9.7% | real | 0.044 |
+| id3_0007 | 0.22× | 0.27× | 0.49× | 13.7% | real | 0.030 |
+| id3_0008 | 0.33× | 0.53× | 0.36× | 19.2% | real | 0.030 |
+| id3_0009 | 0.47× | 0.14× | 0.50× | 19.6% | real | 0.029 |
+| id4_0000 | 0.10× | 0.37× | 0.58× | 20.2% | real | 0.056 |
+| id4_0001 | 0.24× | 0.34× | 0.54× | 19.0% | real | 0.051 |
+
+The same six on the off-the-shelf checkpoint, which is what this table used to
+report:
 
 | Clip | eyes | nose/cheeks | mouth/jaw |
 |---|---|---|---|
@@ -275,20 +337,53 @@ Six Celeb-DF clips, one crop each, off-the-shelf checkpoint:
 | id4_0000 | 0.09× | 0.19× | 0.46× |
 | id4_0001 | 0.12× | 0.27× | 0.52× |
 
-**Every value is below 1.0.** Attention is not merely un-concentrated on the
-facial landmarks — it is systematically *away* from them, out towards the crop's
-periphery: hair, jaw outline, background. Not one clip comes close to naming a
-region, and that is the correct output rather than a failure.
+**Every value is below 1.0 on both checkpoints.** Attention is not merely
+un-concentrated on the facial landmarks — it is systematically *away* from them.
+The three landmark discs cover about 41% of the crop but hold only 9.7%–20.2% of
+the attention mass, which leaves roughly 1.4× the even-spread share out in the
+remaining periphery: hair, jaw outline, background. Not one clip comes close to
+naming a region, and that is the correct output rather than a failure.
 
-**Caveat, and it is a real one.** These numbers come from the off-the-shelf
-checkpoint, which `evaluate_clips.py` measured at ROC-AUC 0.4899 — chance. The
-attention of a model that discriminates nothing explains nothing, so this table
-says where a *broken* detector looked. The fine-tuned checkpoint is not in the
-repository (it is gitignored, and lives in Colab and in the deployed image), so
-the same table has not been produced for the model actually serving traffic.
-**Re-running this on the fine-tuned checkpoint is the outstanding piece**, and
-the 1.5× cut is unvalidated until it is. It is one loop over
-`VideoAnalyzer._explain()` on held-out clips.
+**The caveat that stood here is resolved.** The original table came from the
+off-the-shelf checkpoint, which `evaluate_clips.py` measured at ROC-AUC 0.4899 —
+chance — so it recorded where a *broken* detector looked, and re-running it on
+the fine-tuned weights was listed as the outstanding piece. It has been run. The
+qualitative result survives: a checkpoint that discriminates at 0.9814
+in-dataset attends to the crop's periphery just as the chance-level one did, so
+the finding was not an artifact of the broken model.
+
+The numbers did move. The fine-tuned maxima are *lower* and tighter (0.10×–0.58×
+against 0.09×–0.87×), and mouth/jaw is the strongest region on four of six clips
+rather than being mixed. All six are genuine clips, and all six are now called
+correctly at means of 0.029–0.056 — including `id3_0007`, recorded further down
+this file as a genuine video that scored 0.63 and beat five of the six deepfakes
+under the old thresholds. The fine-tuned checkpoint does not repeat that error.
+
+### The 1.5× cut is still unvalidated, and this run cannot validate it
+
+The largest enrichment of any region on these six clips is **0.58×**, so no cut
+at or above 1.0× could fire. That is suggestive, and it is not a decision:
+
+- **There are no fakes in this sample.** All six clips are Celeb-real. The
+  naming branch exists for the case where a manipulated region draws the model's
+  eye, and a set containing nothing manipulated has not tested that case at all.
+- **Six clips across two identities** is below any bar for moving a threshold,
+  and is the same sample size this file warns against quoting elsewhere.
+
+The cut therefore stays at 1.5× and the naming branch stays in place.
+`recommend()` in `validate_gradcam.py` refuses to issue a verdict on a sample
+this thin and prints what is missing, rather than a confident sentence that
+would later be quoted as the measurement.
+
+**What would settle it:** `validate_gradcam.py --root <celeb-df> --checkpoint
+<vit_finetuned>`, which scores the held-out identities. It reuses
+`evaluate_clips.collect` and `finetune_clips.split_identities` at their own
+defaults, so the split is the identity-disjoint one the model was evaluated on;
+it carries both labels and runs to a few hundred clips. It sweeps candidate cuts
+from 1.1× to 3.0×, reports the share of clips each would name split by true
+label, and refuses to run on hub weights at all. If fakes and reals turn out not
+to separate, the honest conclusion is that the row describes the model and
+nothing else — which is already how the interface words it.
 
 Whatever it shows, the interface does not over-claim: a named region reads
 "Attention concentrated on X (N× an even spread)", anything below the cut reads
@@ -452,21 +547,67 @@ Azure Container Apps has a perpetual free monthly grant — 180,000 vCPU-seconds
 
 ### Backend
 
+The Azure for Students subscription **cannot use ACR Tasks**, so `az containerapp
+up --source ...` — which uploads the folder and builds it in the cloud — fails.
+The image has to be built locally with Docker and pushed. This is the procedure
+that is actually in use; do not reinstate the `--source` form, it does not work
+on this subscription.
+
+The live deployment: resource group `reelreal-rg`, region `switzerlandnorth`,
+registry `ca1c89ee6e5cacr`, app `reelreal`.
+
+**Before building**, refresh the copies under `deploy/container/`. A Docker build
+sees only its own context, so the folder carries its own `server/`,
+`ctf_pretrained/` and `site/`, and a stale copy silently ships old code however
+many times the build succeeds — which is exactly how the Grad-CAM work sat
+un-deployed after being committed:
+
 ```bash
-az login
-az group create --name reelreal-rg --location eastus
-az containerapp up \
-  --name reelreal --resource-group reelreal-rg \
-  --source deploy/container \
-  --ingress external --target-port 7860 \
-  --cpu 1.0 --memory 2.0Gi
+cp -r ctf_pretrained/. deploy/container/ctf_pretrained/
+cp -r site/.           deploy/container/site/
+cp server/adapter.py   deploy/container/server/adapter.py
 ```
 
-`--source` builds the image in the cloud, so Docker is not needed locally. The
-first build takes 15–25 minutes: it installs CPU-only PyTorch and bakes the
-340 MB model into the image.
+Not `server/app.py` — the copy in `deploy/container/` differs deliberately, so
+one container serves the website as well as the API. The fine-tuned checkpoint
+must also be at `deploy/container/ctf_pretrained/vit_finetuned/`; the build fails
+without it on purpose.
 
-Then set the CORS origin, which otherwise defaults to `*`:
+Then build, push and roll, bumping the tag every time:
+
+```bash
+az acr login -n ca1c89ee6e5cacr
+docker build -t ca1c89ee6e5cacr.azurecr.io/reelreal:v7 deploy/container
+docker push  ca1c89ee6e5cacr.azurecr.io/reelreal:v7
+az containerapp update -n reelreal -g reelreal-rg \
+  --image ca1c89ee6e5cacr.azurecr.io/reelreal:v7
+```
+
+The first build takes 15–25 minutes — CPU-only PyTorch plus a 340 MB model baked
+into the image. Later builds reuse the cached layers and take about a minute,
+since only the `COPY` steps change.
+
+Use a new tag rather than overwriting one. Container Apps decides whether to
+create a revision by comparing the image *reference*, so re-pushing the same tag
+can leave the old revision serving while every command reports success.
+
+**Then verify the running service, not the exit codes.** This has drifted twice.
+`az containerapp update` returning cleanly means the revision was accepted, not
+that it is serving:
+
+```bash
+B=https://reelreal.salmonbeach-c14fa31b.switzerlandnorth.azurecontainerapps.io
+az containerapp revision list -n reelreal -g reelreal-rg -o table   # 100% traffic, Running
+curl -s "$B/health"
+curl -s -X POST "$B/v1/analyze" -F video=@sample.mp4 | python -m json.tool
+```
+
+Check the response body actually carries the change you shipped. The v6 rollout
+was confirmed by the `e1` artifact reading `Where the model looked` rather than
+`Face edges`, and by `decisionThresh: 0.50`, which only the fine-tuned checkpoint
+sets — the hub fallback uses 0.40.
+
+Set the CORS origin, which otherwise defaults to `*`:
 
 ```bash
 az containerapp update --name reelreal --resource-group reelreal-rg \
@@ -478,6 +619,12 @@ az containerapp update --name reelreal --resource-group reelreal-rg \
 Set the backend address in `site/js/config.js` — the one line that needs editing
 when the backend moves — then deploy `site/` to Vercel with **Root Directory:
 `site`** and no build command.
+
+Vercel builds from the GitHub repository, so **the site ships on `git push`, not
+on commit.** A commit sitting unpushed on a local `main` is a commit the site
+has not seen; check with `git rev-list --count origin/main..main` before assuming
+a change is live, and confirm with `curl -s https://<site>.vercel.app/ | grep
+<something-new>`.
 
 ### Cold starts
 

@@ -1,0 +1,173 @@
+{
+  "checkpoint": "..\\deploy\\container\\ctf_pretrained\\vit_finetuned",
+  "on_hub_weights": false,
+  "cut": 1.5,
+  "summary": {
+    "n_clips": 6,
+    "cut": 1.5,
+    "frac_naming_a_region": 0.0,
+    "max_enrichment": {
+      "mean": 0.4802833319082695,
+      "median": 0.51392951107167,
+      "min": 0.24744664828036467,
+      "max": 0.580580592099802,
+      "p90": 0.5593058236000942,
+      "p99": 0.5784531152498312
+    },
+    "per_region": {
+      "eyes": {
+        "mean": 0.26950592920932354,
+        "median": 0.24545242426209965,
+        "min": 0.10303336006428722,
+        "max": 0.4698158827441256,
+        "frac_above_1": 0.0
+      },
+      "nose and cheeks": {
+        "mean": 0.28998177225702576,
+        "median": 0.30316721179958533,
+        "min": 0.10050530691996261,
+        "max": 0.5255991820417383,
+        "frac_above_1": 0.0
+      },
+      "mouth and jaw": {
+        "mean": 0.4505664115880559,
+        "median": 0.4950212569636628,
+        "min": 0.2346664911502224,
+        "max": 0.580580592099802,
+        "frac_above_1": 0.0
+      }
+    },
+    "argmax_counts": {
+      "eyes": 1,
+      "nose and cheeks": 1,
+      "mouth and jaw": 4
+    },
+    "n_failed": 0
+  },
+  "sweep": {
+    "1.1": 0.0,
+    "1.25": 0.0,
+    "1.5": 0.0,
+    "1.75": 0.0,
+    "2.0": 0.0,
+    "2.5": 0.0,
+    "3.0": 0.0
+  },
+  "recommendation": "NOT ENOUGH TO SETTLE THE CUT: the clips carry no labels (--clips mode), so fakes and reals cannot be told apart and the case the naming branch exists for is untested here; 6 clips is below the 30 this script treats as the minimum for a threshold decision. What this run does show, on 6 clip(s): every region scored between 0.10x and 0.58x, and the largest per-clip maximum was 0.58x against the 1.50x cut. Record that as a measurement and leave the cut where it is. Re-run with --root over the held-out identities, which carries both labels at a usable sample size, before moving the threshold or touching the naming branch.",
+  "clips": [
+    {
+      "clip": "id3_0006.mp4",
+      "label": -1,
+      "verdict": "NO MANIPULATION DETECTED",
+      "mean_prob": 0.04362730992337068,
+      "enrichment": {
+        "eyes": 0.24744664828036467,
+        "nose and cheeks": 0.10050530691996261,
+        "mouth and jaw": 0.2346664911502224
+      },
+      "shares": {
+        "eyes": 0.03868326508910994,
+        "nose and cheeks": 0.015711966427777956,
+        "mouth and jaw": 0.04249401583607543
+      },
+      "named_region": null,
+      "max_enrichment": 0.24744664828036467,
+      "argmax_region": "eyes"
+    },
+    {
+      "clip": "id3_0007.mp4",
+      "label": -1,
+      "verdict": "NO MANIPULATION DETECTED",
+      "mean_prob": 0.03018471027414004,
+      "enrichment": {
+        "eyes": 0.22056370775530462,
+        "nose and cheeks": 0.2694153743601353,
+        "mouth and jaw": 0.4877826738257238
+      },
+      "shares": {
+        "eyes": 0.027667171090000945,
+        "nose and cheeks": 0.03378430993849592,
+        "mouth and jaw": 0.07581746399009127
+      },
+      "named_region": null,
+      "max_enrichment": 0.4877826738257238,
+      "argmax_region": "mouth and jaw"
+    },
+    {
+      "clip": "id3_0008.mp4",
+      "label": -1,
+      "verdict": "NO MANIPULATION DETECTED",
+      "mean_prob": 0.029801255899171035,
+      "enrichment": {
+        "eyes": 0.3327177761680245,
+        "nose and cheeks": 0.5255991820417383,
+        "mouth and jaw": 0.3600778172505989
+      },
+      "shares": {
+        "eyes": 0.049387794899941134,
+        "nose and cheeks": 0.07817575525305909,
+        "mouth and jaw": 0.06460101464624306
+      },
+      "named_region": null,
+      "max_enrichment": 0.5255991820417383,
+      "argmax_region": "nose and cheeks"
+    },
+    {
+      "clip": "id3_0009.mp4",
+      "label": -1,
+      "verdict": "NO MANIPULATION DETECTED",
+      "mean_prob": 0.02854170501232147,
+      "enrichment": {
+        "eyes": 0.4698158827441256,
+        "nose and cheeks": 0.13977732514271662,
+        "mouth and jaw": 0.5022598401016017
+      },
+      "shares": {
+        "eyes": 0.07695744460048566,
+        "nose and cheeks": 0.022876502592314833,
+        "mouth and jaw": 0.09638592156286517
+      },
+      "named_region": null,
+      "max_enrichment": 0.5022598401016017,
+      "argmax_region": "mouth and jaw"
+    },
+    {
+      "clip": "id4_0000.mp4",
+      "label": -1,
+      "verdict": "NO MANIPULATION DETECTED",
+      "mean_prob": 0.05605154143025478,
+      "enrichment": {
+        "eyes": 0.10303336006428722,
+        "nose and cheeks": 0.3676743958385663,
+        "mouth and jaw": 0.580580592099802
+      },
+      "shares": {
+        "eyes": 0.01866165450143978,
+        "nose and cheeks": 0.0666380531679672,
+        "mouth and jaw": 0.1169469077716976
+      },
+      "named_region": null,
+      "max_enrichment": 0.580580592099802,
+      "argmax_region": "mouth and jaw"
+    },
+    {
+      "clip": "id4_0001.mp4",
+      "label": -1,
+      "verdict": "NO MANIPULATION DETECTED",
+      "mean_prob": 0.05112151621530454,
+      "enrichment": {
+        "eyes": 0.24345820024383463,
+        "nose and cheeks": 0.3369190492390354,
+        "mouth and jaw": 0.5380310551003864
+      },
+      "shares": {
+        "eyes": 0.038103420888768204,
+        "nose and cheeks": 0.05276446685507693,
+        "mouth and jaw": 0.0988220305286424
+      },
+      "named_region": null,
+      "max_enrichment": 0.5380310551003864,
+      "argmax_region": "mouth and jaw"
+    }
+  ]
+}
