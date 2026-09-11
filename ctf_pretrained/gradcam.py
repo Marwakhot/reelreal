@@ -13,11 +13,24 @@ Two things this module gets right that a naive implementation does not:
     is off-centre, rotated, or differently scaled, which is most real footage.
 
   * The reported quantity is the share of total CAM mass falling near each
-    landmark anchor, not the single peak pixel. On a ResNet-18 the final
-    feature map is 7x7, so one "pixel" of the CAM covers roughly 32x32 input
-    pixels; a single argmax over that is a coarse thing to build a claim on.
-    When no region clearly dominates, region_report() returns None and the
-    evidence panel omits the sentence rather than inventing one.
+    landmark anchor, not the single peak pixel. On a ViT-Base the token grid
+    is 14x14, so one "pixel" of the CAM covers a 16x16 input patch; a single
+    argmax over that is a coarse thing to build a claim on. When no region
+    clearly dominates, region_report() returns None and the evidence panel
+    omits the sentence rather than inventing one.
+
+WORKS ON A TRANSFORMER, NOT JUST A CNN
+--------------------------------------
+Grad-CAM is written for convolutional activations shaped (B, C, H, W): it
+averages the gradient over the two spatial axes to weight each channel. A ViT
+block emits (B, N+1, D) -- a sequence of patch tokens with a class token in
+front -- which has no spatial axes to average over, so the same arithmetic
+silently produces a meaningless map instead of failing.
+
+`vit_reshape` is the bridge. It drops the class token and folds the remaining
+196 patch tokens back onto the 14x14 grid they came from, giving
+(B, 768, 14, 14) -- the CNN layout the rest of the algorithm already expects.
+Pass it as `reshape_transform`; without it, a ViT target layer is a bug.
 """
 from __future__ import annotations
 
@@ -40,8 +53,15 @@ REGION_PHRASES = {
 class GradCAM:
     """Minimal Grad-CAM. No external dependency."""
 
-    def __init__(self, model: torch.nn.Module, target_layer: torch.nn.Module):
+    def __init__(self, model: torch.nn.Module, target_layer: torch.nn.Module,
+                 reshape_transform=None):
+        """reshape_transform maps a non-CNN activation into (B, C, H, W).
+
+        Leave it None for a convnet. For a ViT pass `vit_reshape`; see the
+        module docstring for why the default arithmetic cannot work without it.
+        """
         self.model = model
+        self.reshape_transform = reshape_transform
         self.activations = None
         self.gradients = None
         self._handles = [
@@ -79,14 +99,22 @@ class GradCAM:
 
         with torch.enable_grad():
             x = x.clone().requires_grad_(True)
-            logits = self.model(x)
+            out = self.model(x)
+            # A torchvision model returns the logits tensor; a Hugging Face one
+            # returns a dataclass carrying it. Accept either.
+            logits = getattr(out, "logits", out)
             logits[:, class_idx].sum().backward()
 
         if self.activations is None or self.gradients is None:
             return np.zeros((out_size or x.shape[-1],) * 2, dtype=np.float32)
 
-        weights = self.gradients.mean(dim=(2, 3), keepdim=True)
-        cam = F.relu((weights * self.activations).sum(dim=1, keepdim=True))
+        activations, gradients = self.activations, self.gradients
+        if self.reshape_transform is not None:
+            activations = self.reshape_transform(activations)
+            gradients = self.reshape_transform(gradients)
+
+        weights = gradients.mean(dim=(2, 3), keepdim=True)
+        cam = F.relu((weights * activations).sum(dim=1, keepdim=True))
         size = out_size or x.shape[-1]
         cam = F.interpolate(cam, size=(size, size), mode="bilinear", align_corners=False)
         cam = cam[0, 0].cpu().numpy()
@@ -98,12 +126,61 @@ class GradCAM:
         return (cam - lo) / (hi - lo) if hi > lo else np.zeros_like(cam)
 
 
-def region_report(cam: np.ndarray, landmarks: np.ndarray,
-                  dominance: float = 0.40) -> Optional[Dict]:
-    """Which facial region the attention map concentrates on.
+def vit_reshape(t: torch.Tensor) -> torch.Tensor:
+    """(B, N+1, D) transformer tokens -> (B, D, H, W) feature map.
 
-    Returns None when no region reaches `dominance` share of CAM mass, so the
-    interface can stay silent rather than over-claim.
+    Token 0 is the class token. It aggregates the whole image and belongs to no
+    patch, so including it would smear a global summary across the grid. The
+    remaining N tokens are the patches in row-major order, which is why a plain
+    reshape to (H, W) restores their original positions: for a 224px input at
+    patch size 16, N = 196 = 14 x 14.
+
+    Returned unchanged if it is already 4-D, so the same transform can be
+    passed unconditionally.
+    """
+    if t.dim() == 4:
+        return t
+    b, n, d = t.shape
+    side = int(round((n - 1) ** 0.5))
+    if side * side != n - 1:
+        raise ValueError(
+            f"{n} tokens is not one class token plus a square patch grid; "
+            "this layer's output cannot be laid back onto an image.")
+    return t[:, 1:, :].reshape(b, side, side, d).permute(0, 3, 1, 2)
+
+
+def vit_target_layer(model: torch.nn.Module) -> torch.nn.Module:
+    """The layer to hook on a ViTForImageClassification.
+
+    layernorm_before of the final block, not the block's output. The last
+    block's output feeds straight into the classifier through the class token,
+    and its patch tokens have already been pooled away from the decision; the
+    normalised input to that block still carries per-patch structure while
+    sitting late enough to be semantic. This is the layer the reference
+    Grad-CAM-for-transformers implementations target.
+    """
+    return model.vit.encoder.layer[-1].layernorm_before
+
+
+def region_report(cam: np.ndarray, landmarks: np.ndarray,
+                  enrichment: float = 1.5) -> Optional[Dict]:
+    """Which facial region the attention map concentrates on, if any.
+
+    The test is ENRICHMENT, not raw share: each region's fraction of total CAM
+    mass divided by the fraction of the image its disc covers. That ratio has a
+    principled null -- attention spread uniformly scores exactly 1.0 for every
+    region, whatever the discs' sizes -- so the cut means something fixed rather
+    than being tuned to one backbone's feature-map resolution.
+
+    Raw share cannot do this. The three discs together cover only about 40% of
+    a 224px crop, so a 40%-of-total-mass cut is nearly unreachable by
+    construction: it silently becomes "never name a region" rather than "name
+    one when the evidence is there". That was the previous rule.
+
+    Returns region=None when nothing clears `enrichment`, so the interface can
+    stay silent instead of naming whichever region happened to come first.
+    `shares` and `enrichment` are returned either way, because "attention was
+    spread out" is itself a measurement worth reporting.
     """
     if cam is None or landmarks is None or len(landmarks) < 5:
         return None
@@ -126,30 +203,50 @@ def region_report(cam: np.ndarray, landmarks: np.ndarray,
     h, w = cam.shape
     yy, xx = np.mgrid[0:h, 0:w]
 
-    def mass_near(points) -> float:
+    npix = float(h * w)
+
+    def mass_near(points):
+        """-> (share of CAM mass, share of image area) for the union of discs.
+
+        Both are returned from one mask so the ratio between them cannot drift
+        apart -- the area is measured on the same discs the mass was summed
+        over, not computed from the radius analytically.
+        """
         near = np.zeros((h, w), dtype=bool)
         for px, py in points:
             near |= ((xx - px) ** 2 + (yy - py) ** 2) <= radius ** 2
-        return float(cam[near].sum()) / total
+        return float(cam[near].sum()) / total, float(near.sum()) / npix
 
-    shares = {
-        "eyes": mass_near([eyes]),
-        "nose and cheeks": mass_near([nose]),
-        "mouth and jaw": mass_near([mouth, jaw]),
+    anchors = {
+        "eyes": [eyes],
+        "nose and cheeks": [nose],
+        "mouth and jaw": [mouth, jaw],
     }
-    best = max(shares, key=shares.get)
-    if shares[best] < dominance:
-        return {"region": None, "shares": shares, "peak_xy": None,
-                "reason": f"no region reached {dominance:.0%} of attention mass"}
+    shares, areas = {}, {}
+    for name, pts in anchors.items():
+        shares[name], areas[name] = mass_near(pts)
+
+    # Guard the division: a disc entirely outside the crop has zero area and
+    # would otherwise produce inf and win every comparison.
+    ratios = {k: (shares[k] / areas[k] if areas[k] > 0 else 0.0) for k in shares}
+
+    base = {"shares": shares, "areas": areas, "enrichment": ratios,
+            "interocular_px": iod}
+
+    best = max(ratios, key=ratios.get)
+    if ratios[best] < enrichment:
+        return {"region": None, "peak_xy": None,
+                "reason": f"no region reached {enrichment:.2f}x the attention "
+                          "it would get from an evenly spread map",
+                **base}
 
     peak = np.unravel_index(int(np.argmax(cam)), cam.shape)
     return {
         "region": best,
         "phrase": REGION_PHRASES[best],
         "share": shares[best],
-        "shares": shares,
         "peak_xy": (int(peak[1]), int(peak[0])),
-        "interocular_px": iod,
+        **base,
     }
 
 

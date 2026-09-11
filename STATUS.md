@@ -1,6 +1,6 @@
 # REEL/REAL — where the project stands
 
-_Last updated: 10 September 2026_
+_Last updated: 11 September 2026_
 
 ## What this is
 
@@ -155,12 +155,68 @@ deployment against a new manipulation family needs its threshold re-tuned on
 labelled data from it; reusing this one silently costs most of the recall.
 
 **Compression hurts, and predictably.** 0.7929 clean to 0.6301 under a realistic
-re-upload. The cause is known and unaddressed: `finetune_clips.py` trains on
-clean crops, while `preprocess.py` carries `RandomDownscale` and `RandomJPEG`
-precisely because "a detector trained only on clean crops learns artifacts that
-recompression destroys". Wiring those into training is the obvious next step.
-Until then, **fake recall under `social_recompress` is 0.0957** — roughly one
-manipulated video in ten is caught on re-uploaded footage.
+re-upload. **Fake recall under `social_recompress` is 0.0957** — roughly one
+manipulated video in ten is caught on re-uploaded footage. The obvious fix was
+tried and made things worse; see the next section.
+
+### Recorded negative result: augmentation did not help
+
+The compression drop above has a textbook fix. `preprocess.py` has carried
+`RandomDownscale` and `RandomJPEG` since the beginning, with a docstring saying
+a detector trained only on clean crops learns artifacts that recompression
+destroys. Wiring them into training looked like the single largest available
+win. **It was tried, and it lost on every cross-dataset condition.**
+
+`finetune_clips.build_augment()` applies downscale-and-restore (scale 0.35–1.0)
+then JPEG re-encode (quality 30–95), each at p=0.5, to training crops only —
+never to held-out crops, which would measure a different question. Everything
+else was held fixed: same clips, same identity split, same seed, same epochs,
+same learning rate. One variable.
+
+**In-dataset (Celeb-DF held-out identities, 226 clips):**
+
+| | Clean-crop training | Augmented training |
+|---|---|---|
+| ROC-AUC | 0.9814 | **0.9832** |
+| Accuracy | 0.9248 | 0.9248 |
+| ECE | 0.0655 | **0.0599** |
+| Confusion | `tn=131 fp=4 fn=13 tp=78` | `tn=129 fp=6 fn=11 tp=80` |
+
+**Cross-dataset (FaceForensics++, 265 clips, four unseen manipulation methods):**
+
+| Condition | Clean-crop training | Augmented training | Δ |
+|---|---|---|---|
+| clean | **0.7929** | 0.7502 | −0.043 |
+| jpeg_q50 | **0.7602** | 0.7261 | −0.034 |
+| downscale_0.5 | **0.6843** | 0.6582 | −0.026 |
+| social_recompress | **0.6301** | 0.6030 | −0.027 |
+| heavy | **0.6148** | 0.5930 | −0.022 |
+
+**The two tables together rule out the easy explanation.** If augmentation had
+merely made the task harder and left the model underfitted, the in-dataset score
+would have fallen too, and more epochs would be the answer. It did not fall — it
+rose slightly, on both ROC-AUC and calibration error. The model had no trouble
+learning; it learned something that transfers less well.
+
+The likely mechanism: degrading Celeb-DF crops teaches robustness to *noise*,
+not robustness to *a different manipulation method*. The model got better at
+recognising Celeb-DF's particular artifacts through compression, which is not
+the axis FF++ varies along. Training longer would deepen that, not correct it.
+
+**Decision: the clean-crop checkpoint stays deployed.** It is equal in-dataset
+and better on all five cross-dataset conditions. The augmented run is kept as a
+measurement, not as a candidate.
+
+This is worth stating plainly because it contradicts standard advice. "Augment
+for robustness" is the default recommendation, it was the recommendation made in
+this project, and on this task it cost cross-dataset generalisation. Reproduce
+either arm with `finetune_clips.py`; `--no-augment` selects the deployed one,
+and the `augmented` flag is recorded in `finetune_metrics.json` so the two runs
+cannot be confused after the fact.
+
+What would actually address the compression drop is training on more than one
+manipulation family — FF++ clips in the training set alongside Celeb-DF — rather
+than degrading a single family harder. That is untested here.
 
 ### What may and may not be claimed
 
@@ -175,6 +231,71 @@ distribution it was not trained for.
 Reproduce with `evaluate_clips.py` (baseline), `finetune_clips.py` (fine-tune and
 evaluate in-dataset) and `evaluate_external.py` (cross-dataset and degradation).
 All three split by identity; see below for why that matters.
+
+---
+
+## Grad-CAM — implemented, and it says something unexpected
+
+`_explain()` in `infer_pipeline.py` used to return `{"region": None}` from a
+stub. It now runs Grad-CAM for real, on the most suspicious crop of the clip.
+
+**It needed a fix to work at all on this model.** Grad-CAM weights each channel
+by the mean of its gradient over the two spatial axes, which assumes
+convolutional activations shaped `(B, C, H, W)`. A ViT block emits
+`(B, 197, 768)` — a token sequence with no spatial axes — so the same arithmetic
+produces a meaningless map rather than an error. `gradcam.vit_reshape` drops the
+class token and folds the 196 patch tokens back onto the 14×14 grid they came
+from, giving `(B, 768, 14, 14)`. The hooked layer is `layernorm_before` of the
+final encoder block, and the backward pass targets class index 1 — the same
+index `_score()` reads, so the map explains the number that was actually scored.
+
+### The dominance rule was replaced, because the old one could never fire
+
+`region_report()` used to name a region when it held ≥40% of total CAM mass.
+Measured on real crops, the three landmark discs together cover only **~14–19%
+of the image each, ~41% in total**. A 40%-of-total cut is therefore
+unreachable by construction: it was not a conservative threshold, it was
+"never name a region" written in a way that looked like a threshold.
+
+The rule is now **enrichment** — a region's share of CAM mass divided by the
+share of image area its disc covers. Attention spread evenly scores exactly
+1.0 for every region regardless of disc size, so the null is principled rather
+than tuned to a backbone's feature-map resolution. The cut is 1.5×.
+
+### What it measures on real footage
+
+Six Celeb-DF clips, one crop each, off-the-shelf checkpoint:
+
+| Clip | eyes | nose/cheeks | mouth/jaw |
+|---|---|---|---|
+| id3_0006 | 0.13× | 0.21× | 0.48× |
+| id3_0007 | 0.54× | 0.72× | 0.87× |
+| id3_0008 | 0.61× | 0.43× | 0.42× |
+| id3_0009 | 0.42× | 0.39× | 0.40× |
+| id4_0000 | 0.09× | 0.19× | 0.46× |
+| id4_0001 | 0.12× | 0.27× | 0.52× |
+
+**Every value is below 1.0.** Attention is not merely un-concentrated on the
+facial landmarks — it is systematically *away* from them, out towards the crop's
+periphery: hair, jaw outline, background. Not one clip comes close to naming a
+region, and that is the correct output rather than a failure.
+
+**Caveat, and it is a real one.** These numbers come from the off-the-shelf
+checkpoint, which `evaluate_clips.py` measured at ROC-AUC 0.4899 — chance. The
+attention of a model that discriminates nothing explains nothing, so this table
+says where a *broken* detector looked. The fine-tuned checkpoint is not in the
+repository (it is gitignored, and lives in Colab and in the deployed image), so
+the same table has not been produced for the model actually serving traffic.
+**Re-running this on the fine-tuned checkpoint is the outstanding piece**, and
+the 1.5× cut is unvalidated until it is. It is one loop over
+`VideoAnalyzer._explain()` on held-out clips.
+
+Whatever it shows, the interface does not over-claim: a named region reads
+"Attention concentrated on X (N× an even spread)", anything below the cut reads
+"Spread out, no single area stood out", and only a failed Grad-CAM shows a dash.
+All three are captioned as a description of the model's attention, never as
+evidence that the video was edited — which is why the row's severity is capped
+at "warn" even when a region is named.
 
 ---
 
@@ -268,13 +389,19 @@ FF++ / Celeb-DF datasets and Colab.
 
 These were deliberate and should not be "tidied away":
 
-- **Four evidence rows read "Not measured by this model"** — blink rate,
-  compression trace, lip-sync alignment, and C2PA provenance. There is no detector
-  behind any of them; they were invented for an early mock. They are greyed and
-  italic so they can never be mistaken for findings.
-- **"Face boundary blending"** will fill in by itself once `_explain()` in
-  `infer_pipeline.py` is un-stubbed — it currently returns `{"region": None}`.
-  The adapter already handles the populated case.
+- **The site report shows only rows with a measurement behind them.** Blink
+  rate, compression trace, lip-sync alignment and C2PA provenance have no
+  detector behind them at all — they were invented for an early mock — so the
+  website's "What we measured" panel omits them rather than printing four
+  placeholders. The extension still renders the full six-row array, where they
+  read "Not checked yet".
+- **The attention row distinguishes three states, not two.** `_explain()` runs
+  Grad-CAM over the final transformer block and `region_report()` names a facial
+  region only when one area holds at least 40% of the attention mass. Below that
+  the report says "spread across the face, no single area" — which is a result,
+  not a missing value — and only a failed or skipped Grad-CAM shows a dash. The
+  row is captioned as a description of where the model looked, never as evidence
+  of editing, and its severity is capped at "warn" for the same reason.
 - **The confidence band prints "Uncalibrated"** rather than a made-up range.
 - **A mocked result is stamped `SIMULATED RESULT`.** The mock only ever appears
   when the server cannot be reached at all. If the server answers with an error,

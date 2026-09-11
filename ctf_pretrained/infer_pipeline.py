@@ -19,7 +19,7 @@ import aggregate
 import config
 import evidence as ev
 import video_io
-from gradcam import GradCAM, overlay, region_report
+from gradcam import GradCAM, overlay, region_report, vit_reshape, vit_target_layer
 from model import get_device
 from preprocess import crops_from_frame, get_detector
 
@@ -168,9 +168,42 @@ class VideoAnalyzer:
         return np.array(scores)
 
     def _explain(self, crop) -> Optional[Dict]:
-        """Grad-CAM fallback or region report simulation."""
+        """Where the model looked on the most suspicious crop, named by landmark.
+
+        Grad-CAM over the final transformer block, then region_report() turns
+        the map into a region name only when one region holds at least 40% of
+        the attention mass. Below that it returns region=None and the interface
+        stays silent rather than naming whichever region happened to win.
+
+        This is a description of the model's attention, not evidence of
+        manipulation. The report wording says so, and must keep saying so.
+
+        Runs one extra forward-and-backward pass on a single crop, so it costs
+        roughly one frame's inference. Any failure is caught and reported in
+        `error` instead of losing the verdict that has already been computed --
+        an explanation is a nicety, the verdict is the product.
+        """
         try:
-            return {"region": None, "error": None}
+            inputs = self.processor(images=crop.image, return_tensors="pt")
+            x = inputs["pixel_values"].to(self.device)
+            side = crop.image.size[0] if hasattr(crop.image, "size")                 else crop.image.shape[0]
+
+            with GradCAM(self.model, vit_target_layer(self.model),
+                         reshape_transform=vit_reshape) as cam_fn:
+                # class_idx 1 is Deepfake, the same index _score() reads. The
+                # map answers "what drove the fake logit", so a different index
+                # here would explain a different question than the one scored.
+                cam = cam_fn(x, class_idx=1, out_size=side)
+
+            # crop.landmarks are already in crop pixel coordinates and the
+            # processor resizes the same square to the same 224, so the CAM and
+            # the landmarks share one coordinate system with no rescaling.
+            report = region_report(cam, crop.landmarks)
+            if report is None:
+                return {"region": None, "error": None,
+                        "reason": "no usable face landmarks on this crop"}
+            report.setdefault("error", None)
+            return report
         except Exception as exc:
             return {"region": None, "error": f"{type(exc).__name__}: {exc}"}
 

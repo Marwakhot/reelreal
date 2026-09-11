@@ -244,6 +244,15 @@
       ? p.meanScore.toFixed(2) + ' average, ' + (p.peakScore || 0).toFixed(2) + ' peak'
       : '—');
 
+    /* Grad-CAM, stated as what it is. A named region means that area drew at
+       least 1.5x the attention an evenly spread map would put there; "spread
+       out" means the map was computed and nothing stood out, which is a result
+       and not a missing value. A dash means Grad-CAM did not run. */
+    m('mAttn', p.attentionRegion
+      ? p.attentionRegion + ' (' + (p.attentionEnrichment || 0).toFixed(1) +
+        '× more than average)'
+      : (p.attentionMeasured ? 'Spread out, no single area stood out' : '—'));
+
     /* Video preview. Results imported from the extension have no playable blob. */
     var video = $('#rVideo');
     var ghost = $('#vGhost');
