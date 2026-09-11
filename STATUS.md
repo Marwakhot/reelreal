@@ -159,6 +159,48 @@ re-upload. **Fake recall under `social_recompress` is 0.0957** — roughly one
 manipulated video in ten is caught on re-uploaded footage. The obvious fix was
 tried and made things worse; see the next section.
 
+### Recorded miss: the clip on our own landing page
+
+The deepfake in the hero pair on the front page (`site/assets/reel.mp4`, a
+~9 second portrait phone clip, confirmed synthetic by the project owner) is
+**not detected**:
+
+| Clip | Verdict | Clip score | Frames flagged | Face coverage |
+|---|---|---|---|---|
+| `reel.mp4` (synthetic) | NO MANIPULATION DETECTED | 0.0115 | 0 / 30 | 100% |
+| `real.mp4` (genuine) | NO MANIPULATION DETECTED | 0.0118 | 0 / 30 | 100% |
+
+This is not a coverage failure. A face was found in all thirty sampled frames
+of both clips, so the model looked properly and confidently called the fake
+genuine — and gave it a score indistinguishable from the real clip beside it
+(0.0115 against 0.0118).
+
+**It is the documented weakness, not a new one.** The clip is short, portrait,
+phone-shot and re-encoded, and it comes from a generator family outside both
+training sets. Cross-dataset fake recall is already measured at 0.2696 on FF++
+at this threshold and **0.0957 under simulated re-upload**; a clip like this is
+squarely in the population where roughly one fake in ten is caught. Nothing here
+contradicts the earlier numbers — it is one concrete instance of them.
+
+**One clip proves nothing on its own.** n=1 has no interval worth quoting, and a
+single miss neither adds to nor subtracts from the measured recall figures. It is
+recorded because it is a real-world clip rather than a dataset one, and because
+it sits on the landing page, where the system's own front door is a case it gets
+wrong.
+
+**Consequence for the demo.** The public site therefore ships **no sample-clip
+strip**. The only footage cleared for publication is this pair, and a one-click
+demo whose headline button returns "No signs of manipulation" for a clip
+labelled Deepfake would misrepresent the tool to the first person who tries it.
+The strip remains a local feature built by `scripts/make_samples.py` from
+Celeb-DF clips, which cannot be redistributed. Publishing a strip needs a fake
+that is both cleared for publication and actually flagged — until then, absent
+beats misleading.
+
+The hero labels stay as they are: the clip genuinely is generated, and saying so
+next to a detector that missed it is the honest arrangement, not a
+contradiction to hide.
+
 ### Recorded negative result: augmentation did not help
 
 The compression drop above has a textbook fix. `preprocess.py` has carried

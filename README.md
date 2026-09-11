@@ -165,6 +165,13 @@ converted clip, run it through the site once and confirm the verdict still looks
 right. On the four clips installed here it cost one fake 0.91 → 0.80, still
 comfortably flagged.
 
+**The deployed site ships no strip at all.** The only footage cleared for
+publication is the front-page pair, and its deepfake is one this detector misses
+(see STATUS.md) — a one-click demo whose headline button answers "No signs of
+manipulation" would misrepresent the tool to the first person who tries it.
+Absent beats misleading. A public strip needs a fake that is both redistributable
+and actually flagged.
+
 No clip is committed to this repository. Celeb-DF and FaceForensics++ are
 licensed for research use and redistributing them would breach the agreement
 signed to obtain them, so `.gitignore` excludes every video extension and the
