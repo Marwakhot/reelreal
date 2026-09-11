@@ -84,13 +84,37 @@ def score_under(model, processor, crops, labels, clips, device, batch_size,
     return y_true, y_prob
 
 
+def auc_standard_error(auc: float, n_pos: int, n_neg: int) -> float:
+    """Hanley-McNeil standard error of a ROC-AUC estimate.
+
+    A small evaluation set can produce a confident-looking AUC that a handful
+    of clips would move. 30 fake and 30 real is a legitimate set to report --
+    it is not a legitimate set to report to four decimal places without the
+    interval beside it, which is why this is printed rather than left to the
+    reader to work out.
+    """
+    if not (n_pos and n_neg) or not (0.0 <= auc <= 1.0):
+        return float("nan")
+    q1 = auc / (2.0 - auc)
+    q2 = 2.0 * auc * auc / (1.0 + auc)
+    var = (auc * (1.0 - auc)
+           + (n_pos - 1) * (q1 - auc * auc)
+           + (n_neg - 1) * (q2 - auc * auc)) / (n_pos * n_neg)
+    return float(np.sqrt(max(var, 0.0)))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--checkpoint", required=True, type=Path,
                     help="a vit_finetuned directory written by finetune_clips.py")
-    ap.add_argument("--dataset", default="ffpp", choices=["ffpp", "celebdf", "dfd"])
+    ap.add_argument("--dataset", default="ffpp",
+                    choices=["ffpp", "celebdf", "dfd", "flat"],
+                    help="'flat' is a set you assembled yourself: --root holds "
+                         "real/ and fake/ folders, labelled by folder name")
     ap.add_argument("--root", required=True, type=Path)
-    ap.add_argument("--compression", default="c23")
+    ap.add_argument("--compression", default="c23",
+                    help="ignored when --dataset flat, which has no "
+                         "compression tiers to choose between")
     ap.add_argument("--out-dir", default=Path("reports"), type=Path)
     ap.add_argument("--per-class", type=int, default=150)
     ap.add_argument("--frames-per-video", type=int, default=6)
@@ -132,24 +156,43 @@ def main() -> None:
     processor = ViTImageProcessor.from_pretrained(str(args.checkpoint))
 
     results = {}
+    n_pos = n_neg = 0
     for cond in args.conditions:
         print(f"\n=== condition: {cond} {IMAGE_CONDITIONS[cond] or '(pristine)'}")
         y_true, y_prob = score_under(model, processor, crops, labels, clips,
                                      device, args.batch_size, cond)
+        # Identical across conditions -- the same clips are rescored each time.
+        n_pos, n_neg = int((y_true == 1).sum()), int((y_true == 0).sum())
         report = metrics_report(y_true, y_prob, threshold=0.5)
+        report["roc_auc_se"] = auc_standard_error(
+            report.get("roc_auc", float("nan")), n_pos, n_neg)
         print_report(f"{args.dataset} / {cond}", report)
         results[cond] = report
 
-    print("\n" + "=" * 62)
-    print(f"{'condition':<20}{'ROC-AUC':>10}{'accuracy':>11}{'baseline':>11}")
+    print("\n" + "=" * 72)
+    print(f"{'condition':<20}{'ROC-AUC':>10}{'+/- SE':>9}"
+          f"{'accuracy':>11}{'baseline':>11}")
     for cond, r in results.items():
         print(f"{cond:<20}{r.get('roc_auc', float('nan')):>10.4f}"
+              f"{r.get('roc_auc_se', float('nan')):>9.4f}"
               f"{r['accuracy']:>11.4f}{r.get('majority_baseline_accuracy', 0):>11.4f}")
+    print(f"\n{n_pos} fake and {n_neg} real clips scored.")
+
+    # A small set earns a caveat printed next to the number, not one the reader
+    # is left to supply. At 30 per class the standard error is around 0.06, so
+    # two conditions differing by 0.05 have not been shown to differ at all.
+    if min(n_pos, n_neg) < 50:
+        clean_se = results.get("clean", {}).get("roc_auc_se", float("nan"))
+        print(f"NOTE: fewer than 50 clips in a class. The +/- SE column is a "
+              f"Hanley-McNeil standard error; on 'clean' it is {clean_se:.4f}, "
+              "so quote this ROC-AUC with its interval and do not read "
+              "differences smaller than about twice it as real.")
 
     out = args.out_dir / f"external_{args.dataset}.json"
     out.write_text(json.dumps(
         {"dataset": args.dataset, "checkpoint": str(args.checkpoint),
          "compression": args.compression, "n_clips": len(set(clips)),
+         "n_fake_clips": n_pos, "n_real_clips": n_neg,
          "conditions": results}, indent=2, default=float), encoding="utf-8")
     print(f"\nwrote {out}")
 

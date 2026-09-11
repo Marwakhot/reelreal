@@ -1,4 +1,5 @@
-"""Dataset scanners: FaceForensics++, DeepFakeDetection (DFD), and Celeb-DF v2.
+"""Dataset scanners: FaceForensics++, DeepFakeDetection (DFD), Celeb-DF v2,
+and a plain `real/` + `fake/` layout for a set you assembled yourself.
 
 One job: turn a downloaded dataset directory into a uniform list of
 VideoRecords carrying a *correct group key*, so no split can ever put a fake
@@ -22,12 +23,19 @@ Group keys, per dataset:
           This matters little in practice because Celeb-DF is used here as a
           cross-dataset test set, not for training.
 
+  flat    `real/` and `fake/` side by side, labelled by folder and nothing
+          else. Files sharing a stem across the two folders are one group, so
+          a fake named after the clip it was generated from stays tied to it.
+          This is the layout for self-generated fakes, which have no published
+          naming scheme to parse.
+
 Labels are always derived from the directory the file sits in, never from a
 numeric column in a list file. Directory position is unambiguous; a label
 convention read backwards would silently invert every metric in the project.
 """
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -38,7 +46,7 @@ VIDEO_EXTS = (".mp4", ".avi", ".mov", ".mkv")
 FFPP_METHODS = ["Deepfakes", "Face2Face", "FaceSwap", "NeuralTextures", "FaceShifter"]
 COMPRESSIONS = ["raw", "c23", "c40"]
 
-DATASETS = ["ffpp", "dfd", "celebdf"]
+DATASETS = ["ffpp", "dfd", "celebdf", "flat"]
 
 
 @dataclass
@@ -326,6 +334,63 @@ def scan_celebdf(root, testing_list_only: bool = False, verbose: bool = True
 
 
 # --------------------------------------------------------------------------
+# Flat real/ + fake/ directories -- a bring-your-own set
+# --------------------------------------------------------------------------
+def scan_flat(root, verbose: bool = True) -> List[VideoRecord]:
+    """A set you assembled yourself: `root/real/*.mp4` and `root/fake/*.mp4`.
+
+    The three scanners above each decode one published dataset's directory
+    conventions. This one decodes no convention at all -- the label is the
+    folder name and nothing else is inferred -- which is what a set of
+    self-generated fakes needs, since it has no naming scheme to parse.
+
+    GROUPING IS BY FILE STEM. `real/alice_01.mp4` and `fake/alice_01.mp4` are
+    treated as a matched pair and share a group key, so the fake and the real
+    footage it was generated from can never land on opposite sides of a split.
+    Give a fake the same stem as its source to declare that relationship; a
+    stem appearing in only one folder simply becomes a group of one, which is
+    correct for an unpaired sample rather than an error.
+
+    Subdirectories are ignored: only videos sitting directly in `real/` and
+    `fake/` are picked up, so scratch folders next to them cost nothing.
+    """
+    root = Path(root)
+    real_dir, fake_dir = root / "real", root / "fake"
+    reals, fakes = _videos_in(real_dir), _videos_in(fake_dir)
+
+    if not reals and not fakes:
+        raise FileNotFoundError(
+            f"No videos under {root}. The flat layout is two folders:\n"
+            f"  {real_dir}{os.sep}*.mp4   genuine footage\n"
+            f"  {fake_dir}{os.sep}*.mp4   fakes you generated\n"
+            f"Recognised extensions: {', '.join(VIDEO_EXTS)}.")
+    if not reals or not fakes:
+        raise FileNotFoundError(
+            f"Only {'fake' if fakes else 'real'} videos found under {root}. "
+            "A one-class set has no ROC-AUC and no accuracy worth reporting -- "
+            f"both {real_dir.name}/ and {fake_dir.name}/ must be populated.")
+
+    records = [
+        VideoRecord(path=str(p), label=label, video_id=p.stem, group_id=p.stem,
+                    dataset="flat", method=method, compression="unknown")
+        for paths, label, method in ((reals, 0, "real"), (fakes, 1, "self-generated"))
+        for p in paths
+    ]
+
+    if verbose:
+        paired = {p.stem for p in reals} & {p.stem for p in fakes}
+        print(f"[flat] {len(reals)} real, {len(fakes)} fake, "
+              f"{len({r.group_id for r in records})} groups, "
+              f"{len(paired)} matched pair(s) by file stem")
+        if not paired:
+            print("[flat] NOTE: no stem appears in both folders, so nothing is "
+                  "paired. Metrics are unaffected -- evaluation never splits -- "
+                  "but name a fake after the real clip it came from if you want "
+                  "the pairing recorded.")
+    return records
+
+
+# --------------------------------------------------------------------------
 # Dispatch and reporting
 # --------------------------------------------------------------------------
 def scan(dataset: str, root, compression: str = "c23",
@@ -338,6 +403,8 @@ def scan(dataset: str, root, compression: str = "c23",
         return scan_dfd(root, compression, verbose=verbose)
     if dataset == "celebdf":
         return scan_celebdf(root, testing_list_only, verbose=verbose)
+    if dataset == "flat":
+        return scan_flat(root, verbose=verbose)
     raise ValueError(f"unknown dataset {dataset!r}; choose from {DATASETS}")
 
 
