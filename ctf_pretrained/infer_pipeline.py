@@ -6,6 +6,7 @@ without requiring local training.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -68,7 +69,56 @@ class VideoAnalyzer:
             "clip_calibrator": None
         }
         
-        return cls(model, processor, dummy_ckpt, device)
+        analyzer = cls(model, processor, dummy_ckpt, device)
+
+        # A calibration file sitting beside the pipeline is picked up
+        # automatically, so deploying a fitted calibrator is a file copy and
+        # needs no code change. Absent one, the provisional thresholds above
+        # stand and the interface says "Uncalibrated".
+        default_calib = Path(__file__).resolve().parent / "clip_calibration.json"
+        if analyzer.load_clip_calibration(default_calib):
+            print(f"Loaded clip calibration from {default_calib}")
+
+        return analyzer
+
+    def load_clip_calibration(self, path) -> bool:
+        """Load a calibrator written by evaluate_clips.py. True if adopted.
+
+        Refuses a calibrator whose held-out ROC-AUC is below 0.5. That is not
+        defensive padding: an earlier calibration run in this project scored
+        0.357 because it was fitted while _score() read the wrong class index,
+        and a below-chance calibrator does not merely underperform -- it
+        confidently inverts every verdict while the interface reports itself
+        as calibrated. Refusing to load it fails loudly instead.
+        """
+        p = Path(path)
+        if not p.exists():
+            return False
+        try:
+            report = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            print(f"Ignoring {p}: could not be read ({exc})")
+            return False
+
+        calibrator = report.get("calibrator")
+        if not calibrator or not calibrator.get("coef"):
+            print(f"Ignoring {p}: no calibrator coefficients in the file.")
+            return False
+
+        auc = (report.get("holdout_metrics") or {}).get("roc_auc")
+        if auc is not None and auc < 0.5:
+            print(f"REFUSING {p}: held-out ROC-AUC {auc:.3f} is below chance, "
+                  "so this calibrator ranks clips backwards. Check that "
+                  "_score() reads the Deepfake class index (1), then refit.")
+            return False
+
+        self.clip_calibrator = calibrator
+        self.high_thresh = float(report.get("high_thresh")
+                                 or calibrator.get("high_thresh")
+                                 or self.high_thresh)
+        self.decision_thresh = float(report.get("decision_thresh")
+                                     or self.decision_thresh)
+        return True
 
     @classmethod
     def untrained(cls, device: str = None) -> "VideoAnalyzer":

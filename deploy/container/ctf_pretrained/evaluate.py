@@ -34,20 +34,19 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
-import torch
 from sklearn.metrics import (average_precision_score, confusion_matrix,
                              precision_recall_fscore_support, roc_auc_score,
                              roc_curve)
-from torch.utils.data import DataLoader
 
 import config
-from calibrate import (brier_score, collect_logits, expected_calibration_error,
-                       plot_reliability, softmax_fake_prob)
-from dataset import FaceCropDataset, load_manifest, load_splits, split_summary
-from degrade import IMAGE_CONDITIONS, DegradeTransform
-from model import get_device, load_checkpoint
-from preprocess import eval_tf
+from calibrate import brier_score, expected_calibration_error, plot_reliability
+
+# torch, torchvision, transformers and the dataset modules are imported inside
+# make_loader/score_df/main instead of here. metrics_report, print_report and
+# plot_confusion below are numpy, sklearn and matplotlib only, and
+# evaluate_clips.py imports exactly those three -- pulling the whole training
+# stack in to compute a confusion matrix would make them unusable anywhere the
+# training dependencies are not installed.
 
 
 def metrics_report(y_true, y_prob, threshold: float = 0.5) -> dict:
@@ -136,12 +135,19 @@ def plot_confusion(m: dict, out_path: Path, title: str) -> None:
 
 
 def make_loader(df, transform, batch_size, workers):
+    import torch
+    from torch.utils.data import DataLoader
+
+    from dataset import FaceCropDataset
+
     return DataLoader(FaceCropDataset(df, transform), batch_size=batch_size,
                       shuffle=False, num_workers=workers,
                       pin_memory=torch.cuda.is_available())
 
 
 def score_df(model, df, device, transform, batch_size, workers, temperature):
+    from calibrate import collect_logits, softmax_fake_prob
+
     dl = make_loader(df, transform, batch_size, workers)
     logits, labels = collect_logits(model, dl, device)
     return softmax_fake_prob(logits, temperature), labels
@@ -165,6 +171,13 @@ def main(argv=None) -> int:
     ap.add_argument("--seed", type=int, default=config.SEED)
     ap.add_argument("--out-dir", type=Path, default=config.REPORT_DIR)
     args = ap.parse_args(argv)
+
+    import pandas as pd
+
+    from dataset import load_manifest, load_splits, split_summary
+    from degrade import IMAGE_CONDITIONS, DegradeTransform
+    from model import get_device, load_checkpoint
+    from preprocess import eval_tf
 
     device = get_device()
     model, ckpt = load_checkpoint(args.checkpoint, device)

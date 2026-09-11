@@ -149,12 +149,40 @@ Calibration has never been run, so `clip_calibrator` is `None`. Consequences:
    frames untouched will score low. The clips measured above are whole-face swaps,
    where every frame is manipulated.
 
-Fitting the calibrator (`fit_clip_calibration.py`) addresses all three: it takes
-all six clip features and learns their weights from labelled clips, rather than
-anyone hand-picking a summary statistic and a cut-off. It needs the FF++ /
-Celeb-DF splits and Colab — which is what Colab is actually for here.
+### How to fix it: `evaluate_clips.py`
 
-Until then, treat the number as a *ranking*, not a probability.
+`fit_clip_calibration.py` assumes the *trained* pipeline — a `model_best.pt`
+checkpoint and `splits.json`. This project has neither; it scores whole videos
+with a pretrained ViT. `ctf_pretrained/evaluate_clips.py` is the same procedure
+for that setup:
+
+```bash
+python evaluate_clips.py --root /content/celeb-df --out-dir reports --per-class 150
+```
+
+It scans Celeb-DF folders, scores every clip (caching per-frame probabilities so
+re-tuning is instant), **splits by identity rather than by clip**, sweeps the
+per-frame threshold on the calibration split only, fits the calibrator, and
+reports accuracy, precision/recall, ROC-AUC, a confusion matrix and a reliability
+diagram on held-out identities the calibrator never saw.
+
+Splitting by identity matters. Celeb-DF names clips `id{N}_...`, and a clip-level
+split puts the same face in both halves — the model then recognises the person
+rather than the manipulation, and every metric is inflated.
+
+Drop the resulting `clip_calibration.json` next to `infer_pipeline.py` and
+`VideoAnalyzer.load()` picks it up automatically; no code change is needed to
+deploy it. Once loaded, the clip score is a genuine calibrated probability and
+the interface stops saying `Uncalibrated`.
+
+**The loader refuses a calibrator whose held-out ROC-AUC is below 0.5.** A
+previous calibration run in this project scored **0.357** because it was fitted
+while `_score()` still read the wrong class index. A below-chance calibrator does
+not merely underperform — it confidently inverts every verdict while the
+interface reports itself as calibrated. That is strictly worse than no
+calibration, so it fails loudly instead.
+
+Until a calibrator is fitted, treat the number as a *ranking*, not a probability.
 
 Fixing it needs, on the model side: a trained checkpoint (`model_best.pt`), then
 `fit_clip_calibration.py --splits splits.json`, then loading that checkpoint in

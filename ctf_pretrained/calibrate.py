@@ -26,21 +26,27 @@ from __future__ import annotations
 from typing import Dict, Optional, Sequence, Tuple
 
 import numpy as np
-import torch
-import torch.nn as nn
+
+# torch is imported inside the two functions that need it, rather than at module
+# scope. The clip-level helpers here -- fit_clip_calibrator, brier_score,
+# expected_calibration_error, plot_reliability -- are numpy, sklearn and
+# matplotlib only, and evaluate_clips.py re-tunes thresholds from cached frame
+# probabilities without loading a model at all.
 
 
 # --------------------------------------------------------------------------
 # Collecting logits
 # --------------------------------------------------------------------------
-@torch.no_grad()
 def collect_logits(model, dataloader, device: str) -> Tuple[np.ndarray, np.ndarray]:
+    import torch
+
     model.eval()
     logits, labels = [], []
-    for batch in dataloader:
-        x, y = batch[0], batch[1]
-        logits.append(model(x.to(device, non_blocking=True)).float().cpu())
-        labels.append(y.cpu())
+    with torch.no_grad():
+        for batch in dataloader:
+            x, y = batch[0], batch[1]
+            logits.append(model(x.to(device, non_blocking=True)).float().cpu())
+            labels.append(y.cpu())
     return torch.cat(logits).numpy(), torch.cat(labels).numpy()
 
 
@@ -63,6 +69,9 @@ def fit_temperature(logits: np.ndarray, labels: np.ndarray,
     or negative by the optimiser, which flips the sign of every logit and
     silently inverts the classifier.
     """
+    import torch
+    import torch.nn as nn
+
     z = torch.tensor(np.asarray(logits), dtype=torch.float32)
     y = torch.tensor(np.asarray(labels), dtype=torch.long)
 
