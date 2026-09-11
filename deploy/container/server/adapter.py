@@ -103,17 +103,28 @@ def _artifacts(result: Dict) -> List[Dict]:
     longest_run = int(result.get("longest_run") or 0)
     region = result.get("region") or {}
 
-    # e1 — Grad-CAM region naming. The pipeline has the machinery but the
-    # _explain() hook in infer_pipeline.py is currently stubbed to return
-    # {"region": None}, so this stays empty until that is switched back on.
+    # e1 — Grad-CAM region naming, from infer_pipeline._explain().
+    #
+    # Three distinguishable states, and they are not the same thing:
+    #   named region  -> one area drew >=1.5x the attention an evenly spread
+    #                    map would put there (see gradcam.region_report)
+    #   spread out    -> the map was computed and no area dominated
+    #   nothing       -> Grad-CAM did not run or failed
+    #
+    # "Spread out" is a measurement, not a gap, so it does not say NOT_MEASURED.
+    # Severity stays "warn" rather than "bad": where a model looked is a
+    # description of the model, never evidence that the video was manipulated.
     if region.get("region"):
         e1 = {
-            "detail": "Attention concentrated on %s (%.0f%% of the map)" % (
+            "detail": "Attention concentrated on %s (%.1fx an even spread)" % (
                 region.get("phrase", region["region"]),
-                100 * float(region.get("share", 0.0)),
+                float((region.get("enrichment") or {}).get(region["region"], 0.0)),
             ),
-            "severity": "bad",
+            "severity": "warn",
         }
+    elif region.get("shares"):
+        e1 = {"detail": "Attention spread across the face, no single area",
+              "severity": "ok"}
     else:
         e1 = {"detail": NOT_MEASURED, "severity": "na"}
 
@@ -137,7 +148,7 @@ def _artifacts(result: Dict) -> List[Dict]:
     # Labels match the row headings authored in site/index.html. app.js writes
     # only the detail, so these are for the extension and any other consumer.
     return [
-        {"id": "e1", "label": "Face edges", **e1},
+        {"id": "e1", "label": "Where the model looked", **e1},
         {"id": "e2", "label": "Blinking pattern",
          "detail": NOT_MEASURED, "severity": "na"},
         {"id": "e3", "label": "Frame-to-frame flicker", **e3},
@@ -187,6 +198,7 @@ def to_analysis_result(result: Dict, *, file_name: str, file_size: int,
     """pipeline result dict -> AnalysisResult (site/js/detector.js)."""
     verdict = VERDICT_MAP.get(result.get("verdict", ""), "inconclusive")
     is_calibrated = bool(result.get("is_calibrated"))
+    region = result.get("region") or {}
 
     first_t = result.get("first_flagged_t")
     last_t = result.get("last_flagged_t")
@@ -255,6 +267,17 @@ def to_analysis_result(result: Dict, *, file_name: str, file_size: int,
             # screen, since one figure hides whether the frames agreed.
             "meanScore": round(float(result.get("mean") or 0.0), 3),
             "peakScore": round(float(result.get("max") or 0.0), 3),
+            # Where Grad-CAM concentrated on the most suspicious crop, and how
+            # much of the map that area held. Both None when no area reached the
+            # dominance cut, which the UI renders as "spread out" rather than as
+            # a missing value.
+            "attentionRegion": region.get("region"),
+            "attentionShare": (round(float(region["share"]), 3)
+                               if region.get("share") is not None else None),
+            "attentionEnrichment": (
+                round(float((region.get("enrichment") or {})[region["region"]]), 2)
+                if region.get("region") else None),
+            "attentionMeasured": bool(region.get("shares")),
             "highThresh": float(result.get("high_thresh") or 0.0),
             "decisionThresh": float(result.get("decision_thresh") or 0.0),
             "headline": result.get("headline"),

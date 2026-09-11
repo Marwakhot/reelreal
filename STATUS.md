@@ -397,9 +397,10 @@ These were deliberate and should not be "tidied away":
   read "Not checked yet".
 - **The attention row distinguishes three states, not two.** `_explain()` runs
   Grad-CAM over the final transformer block and `region_report()` names a facial
-  region only when one area holds at least 40% of the attention mass. Below that
-  the report says "spread across the face, no single area" — which is a result,
-  not a missing value — and only a failed or skipped Grad-CAM shows a dash. The
+  region only when one area draws at least 1.5× the attention an evenly spread
+  map would put there. Below that the report says "spread across the face, no
+  single area" — which is a result, not a missing value — and only a failed or
+  skipped Grad-CAM shows a dash. The
   row is captioned as a description of where the model looked, never as evidence
   of editing, and its severity is capped at "warn" for the same reason.
 - **The confidence band prints "Uncalibrated"** rather than a made-up range.

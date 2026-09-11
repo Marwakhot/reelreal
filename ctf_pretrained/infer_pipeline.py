@@ -171,9 +171,12 @@ class VideoAnalyzer:
         """Where the model looked on the most suspicious crop, named by landmark.
 
         Grad-CAM over the final transformer block, then region_report() turns
-        the map into a region name only when one region holds at least 40% of
-        the attention mass. Below that it returns region=None and the interface
-        stays silent rather than naming whichever region happened to win.
+        the map into a region name only when one region draws at least 1.5x the
+        attention an evenly spread map would put there -- its share of CAM mass
+        over the share of image area its disc covers. Below that it returns
+        region=None with the shares still filled in, so the interface can say
+        "measured, nothing stood out" rather than naming whichever region
+        happened to win or going silent as though nothing had been checked.
 
         This is a description of the model's attention, not evidence of
         manipulation. The report wording says so, and must keep saying so.
