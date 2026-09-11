@@ -127,17 +127,54 @@ all landing between 0.46 and 0.53 (n=300, so the standard error is ~0.034). The
 weights carry no signal for this manipulation family at all. Fine-tuning on 125
 Celeb-DF identities fixed it.
 
+### Cross-dataset: FaceForensics++
+
+265 FF++ clips (115 fake across Deepfakes, Face2Face, FaceSwap and
+NeuralTextures; 150 real), **none of which the model trained on, using four
+manipulation methods it has never seen.** Degradation is applied to the crops to
+simulate re-uploaded media.
+
+| Condition | ROC-AUC | Accuracy | Simulates |
+|---|---|---|---|
+| clean | **0.7929** | 0.6792 | pristine dataset file |
+| jpeg_q50 | 0.7602 | 0.6113 | moderate recompression |
+| downscale_0.5 | 0.6843 | 0.6755 | halved resolution |
+| social_recompress | 0.6301 | 0.6000 | a re-uploaded reel |
+| heavy | 0.6148 | 0.5925 | worst case |
+
+Majority baseline throughout: 0.5660.
+
+Two things this shows.
+
+**The ranking transfers; the threshold does not.** ROC-AUC 0.7929 on unseen
+manipulation families is real generalisation. But at the 0.50 decision threshold
+inherited from Celeb-DF, FF++ fake recall is only 0.2696 at precision 0.9688
+(`tn=149 fp=1 fn=84 tp=31`) — the model is far too conservative on unfamiliar
+data. `recall @5% FPR 0.3913` confirms the signal is there to be traded for. A
+deployment against a new manipulation family needs its threshold re-tuned on
+labelled data from it; reusing this one silently costs most of the recall.
+
+**Compression hurts, and predictably.** 0.7929 clean to 0.6301 under a realistic
+re-upload. The cause is known and unaddressed: `finetune_clips.py` trains on
+clean crops, while `preprocess.py` carries `RandomDownscale` and `RandomJPEG`
+precisely because "a detector trained only on clean crops learns artifacts that
+recompression destroys". Wiring those into training is the obvious next step.
+Until then, **fake recall under `social_recompress` is 0.0957** — roughly one
+manipulated video in ten is caught on re-uploaded footage.
+
 ### What may and may not be claimed
 
 0.9814 is **in-dataset**: trained on Celeb-DF, tested on held-out Celeb-DF
-identities. It is not a general accuracy figure, and this project's own evidence
-argues against reading it as one — the 0.4899 result *is* a cross-dataset
-generalisation failure, measured on this very pipeline. A detector that transfers
-to unseen manipulation families has not been demonstrated here, and on the
-evidence above should not be assumed.
+identities. The honest summary of all three numbers is that the detector works
+well on the manipulation family it was trained on (0.98), retains useful but
+degraded discrimination on unseen families (0.79), and weakens further on
+recompressed media (0.63). None of those is a general accuracy figure, and the
+0.4899 baseline is a standing reminder of how far a model can fall on a
+distribution it was not trained for.
 
-Reproduce with `evaluate_clips.py` (baseline) and `finetune_clips.py` (fine-tune
-and evaluate). Both split by identity; see below for why that matters.
+Reproduce with `evaluate_clips.py` (baseline), `finetune_clips.py` (fine-tune and
+evaluate in-dataset) and `evaluate_external.py` (cross-dataset and degradation).
+All three split by identity; see below for why that matters.
 
 ---
 
