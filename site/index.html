@@ -50,19 +50,29 @@
         <div class="pair">
           <!-- Drop your own 9:16 clips at site/assets/reel.mp4 and
                site/assets/real.mp4. Until then the green .ghost panel shows. -->
-          <figure class="slot" style="margin:0">
-            <div class="ghost"><b>reel.mp4</b>synthetic sample</div>
-            <video src="assets/reel.mp4" muted loop playsinline preload="metadata"></video>
-            <figcaption class="slot-tag"><span class="dot f"></span> REEL <em>generated</em></figcaption>
-          </figure>
+          <div class="phone-frame">
+            <span class="phone-notch"></span>
+            <span class="phone-btn phone-btn--power"></span>
+            <span class="phone-btn phone-btn--vol"></span>
+            <figure class="slot" style="margin:0">
+              <div class="ghost"><b>reel.mp4</b>synthetic sample</div>
+              <video src="assets/reel.mp4" muted loop playsinline preload="metadata"></video>
+              <figcaption class="slot-tag"><span class="dot f"></span> REEL <em>generated</em></figcaption>
+            </figure>
+          </div>
 
           <div class="vs-badge">VS</div>
 
-          <figure class="slot" style="margin:0">
-            <div class="ghost"><b>real.mp4</b>authentic sample</div>
-            <video src="assets/real.mp4" muted loop playsinline preload="metadata"></video>
-            <figcaption class="slot-tag"><span class="dot t"></span> REAL <em>original</em></figcaption>
-          </figure>
+          <div class="phone-frame">
+            <span class="phone-notch"></span>
+            <span class="phone-btn phone-btn--power"></span>
+            <span class="phone-btn phone-btn--vol"></span>
+            <figure class="slot" style="margin:0">
+              <div class="ghost"><b>real.mp4</b>authentic sample</div>
+              <video src="assets/real.mp4" muted loop playsinline preload="metadata"></video>
+              <figcaption class="slot-tag"><span class="dot t"></span> REAL <em>original</em></figcaption>
+            </figure>
+          </div>
         </div>
       </div>
 
@@ -70,9 +80,35 @@
   </div>
 </section>
 
+<!-- Ticker marquee strip -->
+<div class="ticker-wrap" aria-hidden="true">
+  <div class="ticker-track">
+    <span class="ticker-item">92% Accuracy on held-out clips</span>
+    <span class="ticker-sep">✦</span>
+    <span class="ticker-item">ViT-DFv2 Model</span>
+    <span class="ticker-sep">✦</span>
+    <span class="ticker-item">Frame-by-frame face scoring</span>
+    <span class="ticker-sep">✦</span>
+    <span class="ticker-item">Grad-CAM attention maps</span>
+    <span class="ticker-sep">✦</span>
+    <span class="ticker-item">Deleted after analysis</span>
+    <span class="ticker-sep">✦</span>
+    <span class="ticker-item">92% Accuracy on held-out clips</span>
+    <span class="ticker-sep">✦</span>
+    <span class="ticker-item">ViT-DFv2 Model</span>
+    <span class="ticker-sep">✦</span>
+    <span class="ticker-item">Frame-by-frame face scoring</span>
+    <span class="ticker-sep">✦</span>
+    <span class="ticker-item">Grad-CAM attention maps</span>
+    <span class="ticker-sep">✦</span>
+    <span class="ticker-item">Deleted after analysis</span>
+    <span class="ticker-sep">✦</span>
+  </div>
+</div>
+
 <section class="statement">
   <div class="wrap">
-    <p>A fake clip travels faster than a correction ever could. The critical question isn't just if a video is fake — but which moments look tampered with.</p>
+    <p id="statementText" data-fulltext="A fake clip travels faster than a correction ever could. The critical question isn't just if a video is fake — but which moments look tampered with."></p>
     <small class="serif">Our system flags the moments that look manipulated, and shows its working.</small>
   </div>
 </section>
@@ -85,6 +121,8 @@
     </div>
 
     <div class="drop" id="drop">
+      <!-- Forensic scan line overlay -->
+      <div class="scan-line" id="scanLine"></div>
       <h3>Drop a clip here, or choose from device</h3>
       <p>Your video is sent to the analysis server and deleted as soon as the result is returned. You get a verdict and a timeline of which moments were flagged.</p>
       <button class="btn" id="pick">Select Video File</button>
@@ -143,6 +181,13 @@
         <div class="badge" id="rBadge">Likely synthetic</div>
       </div>
 
+      <!-- Headline + guidance: spoken directly by the pipeline, shown only when
+           a real result arrives (pipeline.headline / pipeline.guidance). -->
+      <div class="report-headline" id="reportHeadline">
+        <p class="headline-text" id="rHeadline"></p>
+        <p class="guidance-text" id="rGuidance"></p>
+      </div>
+
       <div class="stats">
         <div class="stat"><span>Likely AI-manipulated</span><strong id="rScore">0%</strong></div>
         <div class="stat"><span>Confidence</span><strong id="rBand">—</strong></div>
@@ -177,6 +222,14 @@
         <div class="ev"><b>Flagged section</b><span id="mSection">—</span></div>
         <div class="ev"><b>Frame score</b><span id="mScore">—</span></div>
         <div class="ev"><b>Where it looked</b><span id="mAttn">—</span></div>
+      </div>
+
+      <!-- Evidence sentences: one plain-English sentence per measurement the
+           pipeline produced. Built from real numbers only (see evidence.py). -->
+      <div class="timeline" id="evidencePanel">
+        <h4>Evidence</h4>
+        <p class="hint">These sentences are written directly from the measurements above — each one is produced only when the pipeline has a number to report.</p>
+        <ol class="evidence-list" id="evidenceList"></ol>
       </div>
 
       <div class="caveat">
@@ -260,5 +313,6 @@
      exist. Neither file reads or writes analysis state. -->
 <script src="js/reveal.js"></script>
 <script src="js/enhance.js"></script>
+<script src="js/effects.js"></script>
 </body>
 </html>

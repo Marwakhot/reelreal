@@ -253,6 +253,38 @@
         '× more than average)'
       : (p.attentionMeasured ? 'Spread out, no single area stood out' : '—'));
 
+    /* Headline + guidance: only present on real (non-mocked) results.
+       Hide the whole div when empty so it takes no space in the mock path. */
+    var headlineEl = $('#rHeadline');
+    var guidanceEl = $('#rGuidance');
+    var headlinePanelEl = $('#reportHeadline');
+    if (p.headline) {
+      headlineEl.textContent = p.headline;
+      guidanceEl.textContent = p.guidance || '';
+      headlinePanelEl.style.display = '';
+    } else {
+      headlineEl.textContent = '';
+      guidanceEl.textContent = '';
+      headlinePanelEl.style.display = 'none';
+    }
+
+    /* Evidence sentences: list from pipeline.evidence (real results only).
+       Each entry is a plain-English sentence the pipeline wrote from a real number. */
+    var evidenceList = $('#evidenceList');
+    var evidencePanel = $('#evidencePanel');
+    evidenceList.innerHTML = '';
+    var sentences = (p.evidence && p.evidence.length) ? p.evidence : [];
+    if (sentences.length) {
+      sentences.forEach(function (s) {
+        var li = document.createElement('li');
+        li.textContent = s;
+        evidenceList.appendChild(li);
+      });
+      evidencePanel.style.display = '';
+    } else {
+      evidencePanel.style.display = 'none';
+    }
+
     /* Video preview. Results imported from the extension have no playable blob. */
     var video = $('#rVideo');
     var ghost = $('#vGhost');

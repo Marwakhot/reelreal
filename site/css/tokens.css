@@ -190,11 +190,32 @@ a { color: inherit; text-decoration: none; }
 
 /* Dashed upload target. .over is toggled during dragenter/dragover. */
 .drop {
-  border: 2px dashed var(--forest-green);
-  background: var(--white-glass);
-  backdrop-filter: blur(12px);
-  border-radius: var(--radius);
+  border: 3px solid var(--forest-green);
+  background: var(--white);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-radius: 0;
   text-align: center;
-  transition: all .2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 8px 8px 0 var(--forest-green);
+  position: relative;
+  overflow: hidden;
 }
-.drop.over { border-color: var(--accent-orange); background: var(--white); }
+.drop::before {
+  content: "";
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(120deg, transparent, rgba(239, 99, 55, 0.06), transparent);
+  transition: all 0.5s;
+}
+.drop:hover::before { left: 100%; }
+.drop:hover {
+  transform: translate(-3px, -3px);
+  box-shadow: 11px 11px 0 var(--forest-green);
+}
+.drop.over {
+  border-color: var(--accent-orange);
+  background: var(--white);
+  box-shadow: 8px 8px 0 var(--accent-orange);
+}
