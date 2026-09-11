@@ -38,7 +38,7 @@ Nothing inside the detector folder (`ctf_pretrained/`) was modified.
 | `server/` middle layer | **Built and verified end to end.** |
 | Python detector runs locally | Yes — CPU only, no GPU needed. |
 | Verdicts shown to the user | **Fixed** — see below. |
-| Confidence calibration | Never run. Blocked on the model owner. |
+| Confidence calibration | **Fitted and deployed** — held-out ROC-AUC 0.96 (n=60). |
 
 Measured speed on a normal laptop, no graphics card: **first analysis ~5 minutes**
 (it downloads the model), **every one after that ~11–45 seconds** depending on
@@ -426,19 +426,47 @@ Two failures are worth naming:
   six deepfakes. No threshold fixes this one; the model is confidently wrong about
   it. Expect false positives on real footage of this kind.
 
-## ⚠️ Still open — the score is uncalibrated
+## ✅ Fixed — the score is calibrated
 
-Calibration has never been run, so `clip_calibrator` is `None`. Consequences:
+`clip_calibrator` was `None` since the project began: the clip score was a bare
+mean of per-frame model outputs, not a probability, and the report printed
+`Uncalibrated` rather than a made-up band. A calibrator is now fitted and
+deployed, with the identity-exclusion procedure below applied.
 
-1. **The clip score is a mean model output, not a probability.** A clip scoring
-   0.55 is not "55% likely to be fake"; it is only ranked above one scoring 0.30.
-2. **There is no confidence range.** The report prints `Uncalibrated` rather than
-   a band, because no interval exists.
-3. **The mean dilutes partial manipulation.** A lip-sync edit that leaves most
-   frames untouched will score low. The clips measured above are whole-face swaps,
-   where every frame is manipulated.
+### The result
 
-### How to fix it: `evaluate_clips.py`
+`evaluate_clips.py --root <celeb-df> --out-dir reports --per-class 600 --seed 42
+--exclude-finetune-identities`, on the real dataset:
+
+| | |
+|---|---|
+| Clips selected before filtering | 1200 (600/600) |
+| Dropped — fine-tune training identities | 728 clips, 108 identities |
+| Usable after filtering and face detection | 472 clips, 142 unseen identities |
+| Calibration split | 412 clips, 97 identities |
+| **Held-out split** | **60 clips, 45 identities** (10 fake, 50 real) |
+| Chosen `high_thresh` | 0.30 |
+| Held-out ROC-AUC | **0.96** |
+| Held-out ECE | **0.0355** (was 0.0655 uncalibrated) |
+| Held-out Brier | 0.0434 |
+| Confusion (held-out) | `tn=48 fp=2 fn=1 tp=9` |
+
+**Read 0.96 as an interval, not a point.** The held-out set is small and
+imbalanced — 10 fake clips against 50 real. The Hanley–McNeil standard error at
+that size is **≈0.044**, so the honest statement is "0.96 ± ~0.09" at two
+standard errors, not four significant figures. It is consistent with the
+original in-dataset fine-tune metric (0.9814, measured on a separate, larger
+226-clip held-out set) rather than contradicting it — a useful cross-check, not
+independent confirmation of a sharper number.
+
+**`high_thresh = 0.30` landed on the edge of the swept grid**, which runs
+0.30–0.90 in steps of 0.05. The sweep cannot rule out an even lower value doing
+better, because none below 0.30 was ever tried. This does not block deployment
+— the calibrator's logistic regression absorbs the per-frame threshold through
+its own fitted features rather than depending on it being exactly optimal — but
+if the grid is ever revisited, extend it downward first.
+
+### The identity-exclusion procedure, and why it is not optional
 
 **`fit_clip_calibration.py` does not run at all — do not reach for it.** It dies
 at import on `from model import update_checkpoint` (line 51); `model.py` defines
@@ -498,19 +526,20 @@ The written `clip_calibration.json` records `excluded_finetune_identities` and
 at a deployed calibrator, and two files with near-identical coefficients mean
 entirely different things depending on them.
 
-Drop the resulting `clip_calibration.json` next to `infer_pipeline.py` and
-`VideoAnalyzer.load()` picks it up automatically; no code change is needed to
-deploy it. Once loaded, the clip score is a genuine calibrated probability and
-the interface stops saying `Uncalibrated`.
+The resulting `clip_calibration.json` sits next to `infer_pipeline.py` — both at
+`ctf_pretrained/` and inside `deploy/container/ctf_pretrained/`, since a Docker
+build only sees its own context — and `VideoAnalyzer.load()` picks it up
+automatically with no code change. Verified locally through the real loader
+before deploying: `load_clip_calibration()` returned `True`, and a clip analysed
+through it carried `is_calibrated: True` and `confidence_word: "Strong"` where
+the uncalibrated pipeline reported `Uncalibrated`.
 
 **The loader refuses a calibrator whose held-out ROC-AUC is below 0.5.** A
 previous calibration run in this project scored **0.357** because it was fitted
 while `_score()` still read the wrong class index. A below-chance calibrator does
 not merely underperform — it confidently inverts every verdict while the
 interface reports itself as calibrated. That is strictly worse than no
-calibration, so it fails loudly instead.
-
-Until a calibrator is fitted, treat the number as a *ranking*, not a probability.
+calibration, so it fails loudly instead. This run passed the guard at 0.96.
 
 ### A note on `colab_pipeline.ipynb`
 
@@ -541,7 +570,12 @@ These were deliberate and should not be "tidied away":
   skipped Grad-CAM shows a dash. The
   row is captioned as a description of where the model looked, never as evidence
   of editing, and its severity is capped at "warn" for the same reason.
-- **The confidence band prints "Uncalibrated"** rather than a made-up range.
+- **The confidence band reflects whether a calibrator is actually loaded.**
+  With one loaded — the deployed state since the fit described above — it prints
+  `Strong`/`Moderate`/`Weak` from `aggregate.confidence_word()`, which is a
+  genuine calibrated probability rather than a made-up range. Without one it
+  prints `Uncalibrated` rather than borrowing a word that would overstate what
+  the bare mean score means.
 - **A mocked result is stamped `SIMULATED RESULT`.** The mock only ever appears
   when the server cannot be reached at all. If the server answers with an error,
   the error is shown — a real failure is never replaced by an invented result.
