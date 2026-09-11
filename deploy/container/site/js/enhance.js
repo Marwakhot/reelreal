@@ -160,9 +160,19 @@
   var numberEls = document.querySelectorAll('.stat strong, #rScore, #rBand, #rDur');
   if (numberEls.length && 'MutationObserver' in window) {
     numberEls.forEach(function (el) {
-      /* Set while this file is writing interpolated frames, so the observer
-         ignores its own writes instead of retriggering itself. */
-      var selfWrite = false;
+      /* The last string THIS file wrote into the element.
+
+         It is compared against, rather than a boolean flag being raised and
+         lowered around the write, because MutationObserver callbacks are
+         delivered as microtasks - they run after the current task finishes, by
+         which time any `writing = false` has already executed. A flag therefore
+         never suppresses anything, every interpolated frame re-enters the
+         observer, and the count restarts from zero against its own partial
+         output on every frame: the value never arrives and the pop animation
+         restarts forever, leaving a faded "0%" where the score should be.
+
+         Comparing the text survives that timing completely. */
+      var lastWritten = null;
       var frame = 0;
 
       /* Count a value up from zero to whatever app.js wrote, keeping the
@@ -185,17 +195,19 @@
           var t = Math.min(1, (now - start) / DURATION);
           // ease-out cubic: fast off the mark, settles gently on the value
           var eased = 1 - Math.pow(1 - t, 3);
-          selfWrite = true;
-          el.textContent = t < 1
+          var text = t < 1
             ? prefix + (target * eased).toFixed(places) + suffix
             : finalText;
-          selfWrite = false;
+          lastWritten = text;
+          el.textContent = text;
           if (t < 1) frame = requestAnimationFrame(step);
         });
       }
 
       var numMO = new MutationObserver(function () {
-        if (selfWrite) return;
+        // Our own interpolated frame, not a new value from app.js.
+        if (el.textContent === lastWritten) return;
+
         el.classList.remove('rr-pop');
         // force reflow so the animation can restart if triggered twice in a row
         void el.offsetWidth;

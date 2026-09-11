@@ -37,7 +37,7 @@ def consistency_sentence(longest_run: int, n_flagged: int, n_scored: int
     if not n_scored or n_flagged == 0:
         return None
     if longest_run >= max(3, int(0.5 * n_flagged)):
-        return (f"The flagged frames were sustained -- {longest_run} in a row -- "
+        return (f"The flagged frames were sustained – {longest_run} in a row – "
                 "which is more consistent with a manipulation than with noise.")
     return (f"The flagged frames were scattered rather than sustained "
             f"(longest run: {longest_run} consecutive), which lowers confidence "
@@ -105,7 +105,7 @@ def guidance_line(verdict: str) -> str:
         "SYNTHETIC": ("Treat as suspect. Verify against the official channel "
                       "before sharing."),
         "NO MANIPULATION DETECTED": ("No facial manipulation was detected. This is "
-                                     "not a guarantee of authenticity -- verify "
+                                     "not a guarantee of authenticity – verify "
                                      "against the official channel before relying "
                                      "on it."),
         "INSUFFICIENT EVIDENCE": ("Not enough usable face imagery to judge. Try a "
