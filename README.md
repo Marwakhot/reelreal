@@ -142,6 +142,27 @@ shows on screen. Keep the key out of git.
 
 ---
 
+## Front-page clips
+
+The hero pair is installed by a script, because two things that are invisible
+locally decide whether a clip plays on the deployed site:
+
+```bash
+python scripts/prepare_hero.py --fake path/to/fake.mp4 --real path/to/real.mp4
+```
+
+It re-encodes both to H.264 / yuv420p, scales the longest edge to 720, keeps the
+audio (the pair unmutes on hover, so dropping the track would delete a feature),
+and — the important part — moves the MP4 index to the front of the file with
+`-movflags +faststart`. Without that the browser must download the whole clip
+before it can show one frame, which on an autoplaying hero looks exactly like a
+video that does not load. The last pair installed went from 2.0 MB and 0.9 MB to
+0.2 MB each.
+
+`--fake` becomes `reel.mp4`, which the page labels *generated*; `--real` becomes
+`real.mp4`, labelled *original*. Both are required and neither has a default:
+getting them the wrong way round would make the page state something untrue.
+
 ## Sample clips
 
 The "try a sample clip" strip under the uploader is built from clips you already
