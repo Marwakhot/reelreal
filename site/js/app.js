@@ -93,26 +93,67 @@
   var serverNote = $('#serverNote');
   var serverReachable = null;          // null = not yet known
 
-  function showServerNote(reachable) {
-    serverReachable = reachable;
-    if (reachable) {
-      serverNote.classList.remove('on');
+  /* A deployed detector sleeps when nobody is using it, and the container it
+     lives in takes a minute or two to wake. One failed probe therefore means
+     "not awake yet" far more often than it means "not there", so the alarming
+     version of this banner is only shown after several attempts have failed
+     across roughly two and a half minutes. Until then the page says the server
+     is waking, which is what is actually happening. */
+  var PROBE_DELAYS_MS = [4000, 10000, 20000, 40000, 60000];
+  var probeAttempt = 0;
+
+  function isLocalApi() {
+    return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|$|\/)/.test(ReelReal.apiBase());
+  }
+
+  function showServerNote(state) {
+    serverReachable = (state === 'up') ? true : (state === 'down') ? false : null;
+
+    if (state === 'up') {
+      serverNote.classList.remove('on', 'server-note--waking');
       serverNote.textContent = '';
       return;
     }
+
+    if (state === 'waking') {
+      serverNote.classList.add('on', 'server-note--waking');
+      serverNote.innerHTML =
+        '<b>Waking the detector</b>' +
+        '<span>The analysis server sleeps when nobody is using it, and takes a ' +
+        'minute or two to start. You can choose a video meanwhile - this notice ' +
+        'disappears by itself once the server answers.</span>';
+      return;
+    }
+
+    /* Genuinely unreachable. The instruction differs by audience: telling a
+       visitor to the public site to run uvicorn on their own machine is
+       nonsense, and the only honest thing to say there is to try again later. */
+    serverNote.classList.add('on');
+    serverNote.classList.remove('server-note--waking');
     serverNote.innerHTML =
       '<b>No detection server at ' + ReelReal.apiBase() + '</b>' +
       '<span>Anything you analyse now produces a <b>simulated</b> result - invented ' +
       'numbers for working on the interface, not a measurement of your video. ' +
-      'Start the server with <code>cd server &amp;&amp; python -m uvicorn app:app --port 8000</code> ' +
-      'and reload.</span>';
-    serverNote.classList.add('on');
+      (isLocalApi()
+        ? 'Start the server with <code>cd server &amp;&amp; python -m uvicorn app:app --port 8000</code> and reload.'
+        : 'The server may still be starting, or may be down. Please try again in a few minutes.') +
+      '</span>';
   }
 
-  fetch(ReelReal.apiBase() + '/health', { method: 'GET' })
-    .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
-    .then(function () { showServerNote(true); })
-    .catch(function () { showServerNote(false); });
+  function probeServer() {
+    fetch(ReelReal.apiBase() + '/health', { method: 'GET' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+      .then(function () { showServerNote('up'); })
+      .catch(function () {
+        if (probeAttempt < PROBE_DELAYS_MS.length) {
+          showServerNote('waking');
+          setTimeout(probeServer, PROBE_DELAYS_MS[probeAttempt++]);
+        } else {
+          showServerNote('down');
+        }
+      });
+  }
+  probeServer();
 
   /* ------------------------------------------------------------------------
      Upload staging
@@ -229,7 +270,14 @@
       });
       renderReport(result, { playbackURL: objectURL });
       // A mocked result means the probe was right, or the server died since.
-      if (result.isMock && serverReachable !== false) showServerNote(false);
+      // A mocked result is proof the server really is unreachable, whatever the
+      // probe thought - so it settles the question immediately.
+      if (result.isMock && serverReachable !== false) {
+        probeAttempt = PROBE_DELAYS_MS.length;
+        showServerNote('down');
+      } else if (!result.isMock && serverReachable !== true) {
+        showServerNote('up');
+      }
       rememberCheck(result);
     } catch (err) {
       barLabel.textContent = 'Analysis failed: ' + err.message;

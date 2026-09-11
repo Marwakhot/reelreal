@@ -852,3 +852,13 @@ footer {
 }
 .brutalist-panel.state-warn .verdict .file h3 { color: var(--warn); }
 .brutalist-panel.state-warn .badge { border-color: var(--warn); color: var(--warn); background: rgba(217, 119, 6, .1); }
+
+/* The "waking up" state of the server banner. Amber and quiet: a sleeping
+   container is the normal state of a scale-to-zero deployment, not a fault,
+   and it must not look like the red "your numbers are invented" warning. */
+.server-note--waking {
+  border-color: var(--warn);
+  background: rgba(217, 119, 6, .07);
+  box-shadow: 6px 6px 0 rgba(217, 119, 6, .45);
+}
+.server-note--waking b { color: var(--warn); }
