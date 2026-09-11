@@ -53,3 +53,21 @@ desktop.ini
 # number is the thing this project keeps having to go back and re-derive.
 reports/*_cache/
 reports/*.png
+
+# ---------------------------------------------------------------------------
+# The two front-page clips are the ONE exception to the blanket video rule
+# above. They are the project owner's own footage, cleared for publication, and
+# the site is deployed from this repository - so if they are not committed the
+# public front page falls back to empty placeholder panels.
+#
+# These negations sit at the end of the file on purpose: a later pattern wins,
+# so they have to come after both `site/assets/*.mp4` and the blanket `*.mp4`.
+#
+# Nothing else may be added here. The sample-strip clips are Celeb-DF and
+# FaceForensics++ footage, licensed for research use only; publishing them to a
+# public URL would breach the agreement signed to obtain the datasets.
+# ---------------------------------------------------------------------------
+!site/assets/reel.mp4
+!site/assets/real.mp4
+!deploy/container/site/assets/reel.mp4
+!deploy/container/site/assets/real.mp4
