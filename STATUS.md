@@ -188,14 +188,13 @@ recorded because it is a real-world clip rather than a dataset one, and because
 it sits on the landing page, where the system's own front door is a case it gets
 wrong.
 
-**Consequence for the demo.** The public site therefore ships **no sample-clip
-strip**. The only footage cleared for publication is this pair, and a one-click
-demo whose headline button returns "No signs of manipulation" for a clip
-labelled Deepfake would misrepresent the tool to the first person who tries it.
-The strip remains a local feature built by `scripts/make_samples.py` from
-Celeb-DF clips, which cannot be redistributed. Publishing a strip needs a fake
-that is both cleared for publication and actually flagged — until then, absent
-beats misleading.
+**Consequence for the demo.** This pair is deliberately not used for the public
+sample strip. A one-click demo whose headline button returns "No signs of
+manipulation" for a clip labelled Deepfake would misrepresent the tool to the
+first person who tries it. The deployed strip is driven instead by
+`site/assets/demo/`, a separate pair also cleared for publication, whose fake the
+detector does flag (0.9405, 28 of 30 frames). Celeb-DF clips remain local-only
+via `scripts/make_samples.py`, since they cannot be redistributed.
 
 The hero labels stay as they are: the clip genuinely is generated, and saying so
 next to a detector that missed it is the honest arrangement, not a

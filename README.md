@@ -165,12 +165,17 @@ converted clip, run it through the site once and confirm the verdict still looks
 right. On the four clips installed here it cost one fake 0.91 → 0.80, still
 comfortably flagged.
 
-**The deployed site ships no strip at all.** The only footage cleared for
-publication is the front-page pair, and its deepfake is one this detector misses
-(see STATUS.md) — a one-click demo whose headline button answers "No signs of
-manipulation" would misrepresent the tool to the first person who tries it.
-Absent beats misleading. A public strip needs a fake that is both redistributable
-and actually flagged.
+**The deployed site uses a different, committed pair.** `site/assets/demo/`
+holds two clips cleared for publication — a deepfake the detector flags at
+**0.9405 with 28 of 30 frames flagged**, and its genuine counterpart at 0.1055.
+The site prefers the generated manifest when one exists and falls back to this
+pair, so a local demo shows your own dataset clips while the public site and a
+fresh clone still have something to press.
+
+The front-page hero deepfake is deliberately *not* used for this: the detector
+misses it (see STATUS.md), and a one-click demo whose headline button answers
+"No signs of manipulation" would misrepresent the tool to the first person who
+tries it.
 
 No clip is committed to this repository. Celeb-DF and FaceForensics++ are
 licensed for research use and redistributing them would breach the agreement

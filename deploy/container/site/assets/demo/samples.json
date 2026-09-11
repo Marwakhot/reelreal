@@ -1,0 +1,23 @@
+{
+  "note": "Committed demo clips for the DEPLOYED site. Unlike site/assets/samples/, which scripts/make_samples.py builds from research-licensed footage that cannot leave this machine, these two are cleared for publication. The site prefers the generated manifest when it exists and falls back to this one, so a local demo shows your own clips and a fresh clone still has something to press.",
+  "clips": [
+    {
+      "file": "sample-deepfake.mp4",
+      "title": "Deepfake sample",
+      "groundTruth": "Deepfake",
+      "note": "Matched pair with the clip beside it",
+      "sizeBytes": 402463,
+      "reencoded": false,
+      "sourceCodec": "h264"
+    },
+    {
+      "file": "sample-real.mp4",
+      "title": "Real sample",
+      "groundTruth": "Real",
+      "note": "The genuine counterpart",
+      "sizeBytes": 328964,
+      "reencoded": false,
+      "sourceCodec": "h264"
+    }
+  ]
+}

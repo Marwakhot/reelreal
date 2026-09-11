@@ -71,3 +71,16 @@ reports/*.png
 !site/assets/real.mp4
 !deploy/container/site/assets/reel.mp4
 !deploy/container/site/assets/real.mp4
+
+# The published demo pair behind the deployed site's sample strip: one deepfake
+# the detector flags at 0.9405, and its genuine counterpart. Cleared for
+# publication by the project owner. Same reasoning as the hero clips - the site
+# is deployed from this repository, so a clip that is not committed does not
+# exist for any visitor.
+#
+# site/assets/samples/ stays ignored in full and must never be added here: that
+# folder is built from Celeb-DF footage, which is licensed for research use only.
+!site/assets/demo/*.mp4
+!site/assets/demo/samples.json
+!deploy/container/site/assets/demo/*.mp4
+!deploy/container/site/assets/demo/samples.json

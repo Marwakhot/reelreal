@@ -531,12 +531,32 @@
      picked yourself, so pressing one runs the same analysis over the same
      upload path. Nothing here shortcuts the detector.
      ---------------------------------------------------------------------- */
-  function loadSamples() {
-    fetch('assets/samples/samples.json', { cache: 'no-store' })
+  /* Two sources, tried in order:
+
+       assets/samples/  built by scripts/make_samples.py from whatever clips you
+                        hold locally. Gitignored in full, because that footage is
+                        research-licensed and cannot be redistributed.
+       assets/demo/     two clips cleared for publication, committed to the repo.
+
+     So a local demo shows your own dataset clips, and the deployed site - and a
+     fresh clone, which has no local manifest either - still has something to
+     press. Each manifest's files resolve against its own folder, so neither
+     knows the other exists. */
+  var SAMPLE_SOURCES = [
+    { manifest: 'assets/samples/samples.json', base: 'assets/samples/' },
+    { manifest: 'assets/demo/samples.json', base: 'assets/demo/' }
+  ];
+
+  function loadSamples(index) {
+    index = index || 0;
+    if (index >= SAMPLE_SOURCES.length) return;   // nothing installed: strip stays hidden
+    var source = SAMPLE_SOURCES[index];
+
+    fetch(source.manifest, { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('no manifest')); })
       .then(function (manifest) {
         var clips = (manifest && manifest.clips) || [];
-        if (!clips.length) return;
+        if (!clips.length) return loadSamples(index + 1);
 
         var row = $('#sampleRow');
         clips.forEach(function (clip) {
@@ -564,7 +584,7 @@
             button.disabled = true;
             var previous = name.textContent;
             name.textContent = 'Loading...';
-            fetch('assets/samples/' + encodeURIComponent(clip.file))
+            fetch(source.base + encodeURIComponent(clip.file))
               .then(function (r) { return r.ok ? r.blob() : Promise.reject(new Error('HTTP ' + r.status)); })
               .then(function (blob) {
                 // Wrapped in a File so the staging path, the preview and the
@@ -584,7 +604,7 @@
         });
         $('#samples').hidden = false;
       })
-      .catch(function () { /* no samples installed: the strip stays hidden */ });
+      .catch(function () { loadSamples(index + 1); });
   }
   loadSamples();
 
