@@ -159,34 +159,47 @@ re-upload. **Fake recall under `social_recompress` is 0.0957** — roughly one
 manipulated video in ten is caught on re-uploaded footage. The obvious fix was
 tried and made things worse; see the next section.
 
-### Recorded miss: the clip on our own landing page
+### Recorded misses: two real-world fakes, both missed
 
-The deepfake in the hero pair on the front page (`site/assets/reel.mp4`, a
-~9 second portrait phone clip, confirmed synthetic by the project owner) is
-**not detected**:
+Two separate portrait phone clips, each confirmed synthetic by the project
+owner, were put through the pipeline while choosing footage for the landing
+page. **Neither was detected**, and each scored indistinguishably from the
+genuine clip it was paired with:
 
-| Clip | Verdict | Clip score | Frames flagged | Face coverage |
-|---|---|---|---|---|
-| `reel.mp4` (synthetic) | NO MANIPULATION DETECTED | 0.0115 | 0 / 30 | 100% |
-| `real.mp4` (genuine) | NO MANIPULATION DETECTED | 0.0118 | 0 / 30 | 100% |
+| Clip | Truth | Verdict | Clip score | Frames flagged | Face coverage |
+|---|---|---|---|---|---|
+| hero pair 1, fake | synthetic | NO MANIPULATION DETECTED | 0.0115 | 0 / 30 | 100% |
+| hero pair 1, real | genuine | NO MANIPULATION DETECTED | 0.0118 | 0 / 30 | 100% |
+| hero pair 2, fake (currently deployed as `reel.mp4`) | synthetic | NO MANIPULATION DETECTED | **0.0142** | 0 / 30 | 100% |
+| hero pair 2, real (currently deployed as `real.mp4`) | genuine | NO MANIPULATION DETECTED | 0.0117 | 0 / 30 | 100% |
 
-This is not a coverage failure. A face was found in all thirty sampled frames
-of both clips, so the model looked properly and confidently called the fake
-genuine — and gave it a score indistinguishable from the real clip beside it
-(0.0115 against 0.0118).
+Neither is a coverage failure. A face was found in all thirty sampled frames of
+all four clips, so the model looked properly and confidently called both fakes
+genuine. The separation between fake and real within each pair is 0.0003 and
+0.0025 — no separation at all.
 
-**It is the documented weakness, not a new one.** The clip is short, portrait,
-phone-shot and re-encoded, and it comes from a generator family outside both
-training sets. Cross-dataset fake recall is already measured at 0.2696 on FF++
+**Two for two is worth more attention than one.** It is still a tiny sample and
+carries no interval, but the clips came from different sources and both landed
+in the same place, which is a pattern rather than an accident.
+
+**It is the documented weakness, not a new one.** Both clips are short,
+portrait, phone-shot and re-encoded, and come from generator families outside
+both training sets. Cross-dataset fake recall is already measured at 0.2696 on FF++
 at this threshold and **0.0957 under simulated re-upload**; a clip like this is
 squarely in the population where roughly one fake in ten is caught. Nothing here
 contradicts the earlier numbers — it is one concrete instance of them.
 
-**One clip proves nothing on its own.** n=1 has no interval worth quoting, and a
-single miss neither adds to nor subtracts from the measured recall figures. It is
-recorded because it is a real-world clip rather than a dataset one, and because
-it sits on the landing page, where the system's own front door is a case it gets
-wrong.
+**Two clips still prove very little.** n=2 has no interval worth quoting and
+neither adds to nor subtracts from the measured recall figures. They are recorded
+because they are real-world clips rather than dataset ones, because both sit on
+the landing page, and because the honest reading of "one fake in ten is caught on
+re-uploaded footage" is that footage like this is usually missed — which is
+exactly what happened, twice.
+
+**What would actually address it** is training on more than one manipulation
+family, which STATUS.md already identifies as untested. Nothing in the interface
+can compensate: a detector that scores a fake at 0.0142 is not being let down by
+its presentation.
 
 **Consequence for the demo.** This pair is deliberately not used for the public
 sample strip. A one-click demo whose headline button returns "No signs of
@@ -196,9 +209,11 @@ first person who tries it. The deployed strip is driven instead by
 detector does flag (0.9405, 28 of 30 frames). Celeb-DF clips remain local-only
 via `scripts/make_samples.py`, since they cannot be redistributed.
 
-The hero labels stay as they are: the clip genuinely is generated, and saying so
-next to a detector that missed it is the honest arrangement, not a
-contradiction to hide.
+The hero labels stay as they are: the clips genuinely are generated, and saying so
+next to a detector that missed them is the honest arrangement, not a
+contradiction to hide. The practical consequence for a live demonstration is that
+the hero clips must not be handed to anyone as something to upload - the strip
+pair exists for that, and it is flagged at 0.9405.
 
 ### Recorded negative result: augmentation did not help
 
